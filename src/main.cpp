@@ -5,6 +5,7 @@
 #include <rail_cal_simulation/cost_function.h>
 #include <rail_cal_simulation/dot_grid.h>
 #include <rail_cal_simulation/observation_creator.h>
+#include <rail_cal_simulation/utilities.h>
 #include <Eigen/Dense>
 
 static PinholeCamera makeCamera()
@@ -12,18 +13,18 @@ static PinholeCamera makeCamera()
   PinholeCamera camera;
 
   // Sensor parameters
-  camera.width = 1900;
+  camera.width = 1600;
   camera.height = 1200;
   // Pinhole parameters
-  camera.intrinsics.data()[0] = 1200.0; // fx
-  camera.intrinsics.data()[1] = 1200.0; // fy
+  camera.intrinsics.data()[0] = 800.0; // fx
+  camera.intrinsics.data()[1] = 800.0; // fy
   camera.intrinsics.data()[2] = camera.width / 2; // cx
   camera.intrinsics.data()[3] = camera.height / 2; // cy
   // Distortion Parameters
-  camera.intrinsics.data()[4] = 0.0; // k1
-  camera.intrinsics.data()[5] = 0.0; // k2
+  camera.intrinsics.data()[4] = -0.03; // k1
+  camera.intrinsics.data()[5] = 0.05; // k2
   camera.intrinsics.data()[6] = 0.0; // k3
-  camera.intrinsics.data()[7] = 0.0; // p1
+  camera.intrinsics.data()[7] = 0.002; // p1
   camera.intrinsics.data()[8] = 0.0; // p2
 
   return camera;
@@ -99,6 +100,14 @@ PhysicalSetup makeGroundTruth()
   cell.camera_origin_pose.linear() << 1,  0,  0,
                                       0, -1,  0,
                                       0,  0, -1;
+
+  // Now perturb the camera/target intersection
+  const double spatial_noise = 0.01; // +/-
+  const double angular_noise = 20.0 * M_PI / 180.0; // +/- deg
+
+  // TODO: Take a seed - currently you get a new random pertubation each time
+  cell.camera_origin_pose = perturbPose(cell.camera_origin_pose, spatial_noise, angular_noise);
+
   return cell;
 }
 
@@ -150,6 +159,7 @@ void runExperiment1()
   // Setup optimization
   // Guesses
   PinholeCamera guess_camera = cell.camera;
+  guess_camera.intrinsics.data()[0] = guess_camera.intrinsics.data()[1] = 500.0;
   double target_pose[6];
   target_pose[0] = M_PI;  // rx
   target_pose[1] = 0.0;   // ry

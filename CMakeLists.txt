@@ -30,7 +30,8 @@ add_executable(${PROJECT_NAME}_node
   src/main.cpp
   src/rail_cal_simulation/camera_model.cpp
   src/rail_cal_simulation/dot_grid.cpp
-  src/observation_creator.cpp)
+  src/observation_creator.cpp
+  src/utilities.cpp)
 
 set_target_properties(${PROJECT_NAME}_node PROPERTIES OUTPUT_NAME rail_cal_sim PREFIX "")
 
