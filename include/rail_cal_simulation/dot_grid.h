@@ -12,6 +12,7 @@ public:
   using PointVector = std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>>;
 
   DotGrid(int rows, int cols, double spacing);
+  DotGrid() = default;
 
   PointVector& points() { return target_points_; }
   const PointVector& points() const { return target_points_; }
@@ -21,7 +22,7 @@ public:
   int rows() const { return rows_; }
   int cols() const { return cols_; }
 
-private:
+public:
   int rows_, cols_;
   double spacing_;
   PointVector target_points_;

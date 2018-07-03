@@ -34,62 +34,122 @@ static DotGrid makeTarget()
   return DotGrid(19, 12, 0.01);
 }
 
-std::vector<EigenSTLVector<Eigen::Vector2d>>
-takePictures(const PinholeCamera& camera, const DotGrid& target, const Eigen::Affine3d& target_pose,
-             const Eigen::Affine3d& camera_start, const double min_distance, const double max_distance,
-             const double increment)
+struct PhysicalSetup
 {
-  // Vector of vector of dots in image
+  PinholeCamera camera;
+  DotGrid target;
+
+  Eigen::Affine3d target_pose;
+  Eigen::Affine3d camera_origin_pose; // Camera pose when its focal point intersects the target
+};
+
+struct ExperimentalSetup
+{
+  double min_distance = 0.5;    // Take pictures from this distance
+  double max_distance = 2.0;    // To this distance
+  double increment = 0.25;      // At this increment
+
+  bool filter_images = true;    // If true, images with points outside image bounds are removed
+};
+
+struct NoiseModels
+{
+  // TODO
+};
+
+struct ExperimentalData
+{
+  std::vector<double> rail_position; // Relative to start of rail movement
   std::vector<EigenSTLVector<Eigen::Vector2d>> images;
+};
 
-  for (double s = min_distance; s <= max_distance; s += increment)
+ExperimentalData
+takePictures(const PhysicalSetup& cell, const ExperimentalSetup& experiment, const NoiseModels& noise)
+{
+  (void)noise;
+  // Vector of vector of dots in image
+  ExperimentalData data;
+
+  for (double s = experiment.min_distance; s <= experiment.max_distance; s += experiment.increment)
   {
-    Eigen::Affine3d camera_pose = camera_start * Eigen::Translation3d(0, 0, -s);
-    Eigen::Affine3d target_in_camera = camera_pose.inverse() * target_pose;
+    Eigen::Affine3d camera_pose = cell.camera_origin_pose * Eigen::Translation3d(0, 0, -s);
+    Eigen::Affine3d target_in_camera = camera_pose.inverse() * cell.target_pose;
 
-    EigenSTLVector<Eigen::Vector2d> grid_in_image = projectGrid(target_in_camera, camera, target);
-    images.push_back(grid_in_image);
+    EigenSTLVector<Eigen::Vector2d> grid_in_image = projectGrid(target_in_camera, cell.camera, cell.target);
+    data.images.push_back(grid_in_image);
+    data.rail_position.push_back(s - experiment.min_distance);
   }
 
-  return images;
+  return data;
+}
+
+PhysicalSetup makeGroundTruth()
+{
+  PhysicalSetup cell;
+  cell.camera = makeCamera();
+  cell.target = makeTarget();
+  cell.target_pose.setIdentity();
+
+  cell.camera_origin_pose.setIdentity();
+  cell.camera_origin_pose.translation() = Eigen::Vector3d(cell.target.physicalWidth() / 2,
+                                                          cell.target.physicalHeight() / 2,
+                                                          0.0);
+
+  // set orientation (camera looking down at the target, camera x pointing along target x)
+  cell.camera_origin_pose.linear() << 1,  0,  0,
+                                      0, -1,  0,
+                                      0,  0, -1;
+  return cell;
+}
+
+ExperimentalData runExperiment(const PhysicalSetup& setup, const ExperimentalSetup& experiment,
+                               const NoiseModels& noise_models)
+{
+  (void)noise_models; // TODO: Implement this for observation noise, rail imprecision, etc.
+
+  ExperimentalData raw_data = takePictures(setup, experiment, noise_models);
+
+  ExperimentalData filtered_data;
+  if (experiment.filter_images)
+  {
+    for (std::size_t i = 0; i < raw_data.images.size(); ++i)
+    {
+      if (inSensorBounds(setup.camera.width, setup.camera.height, raw_data.images[i]))
+      {
+        filtered_data.images.push_back(raw_data.images[i]);
+        filtered_data.rail_position.push_back(raw_data.rail_position[i]);
+      }
+      else
+      {
+        std::cerr << "Image at " << i << ", rail = " << raw_data.rail_position[i] << " was not in image bounds\n";
+      }
+    }
+  }
+  else
+  {
+    filtered_data = raw_data;
+  }
+
+  return filtered_data;
 }
 
 void runExperiment1()
 {
-  // Define camera & target
-  PinholeCamera true_camera = makeCamera();
-  DotGrid true_target = makeTarget();
-  std::cout << true_target << "\n";
+  PhysicalSetup cell = makeGroundTruth();
 
-  // First let us define the "ground truth"
-  // The target will be located at Origin
-  Eigen::Affine3d true_target_pose = Eigen::Affine3d::Identity();
+  // Define the experiment
+  ExperimentalSetup experiment;
+  experiment.min_distance = 0.5;
+  experiment.max_distance = 2.0;
+  experiment.increment = 0.25;
+  experiment.filter_images = true;
 
-  // The path is defined by a linear path that NOMINALLY starts in the middle of the
-  // target and proceeds backwards along -Z in camera space
-  Eigen::Affine3d ideal_camera_start_point = Eigen::Affine3d::Identity();
-  // correct for target center
-  ideal_camera_start_point.translation() = Eigen::Vector3d(true_target.physicalWidth() / 2,
-                                                           true_target.physicalHeight() / 2, 0);
-  // set orientation (camera looking down at the target, camera x pointing along target x)
-  ideal_camera_start_point.linear() << 1,  0,  0,
-                                       0, -1,  0,
-                                       0,  0, -1;
-
-  // Take a picture every 20 cm from 0.5 meters to 1.5 meters
-  const double min_distance = 0.5;
-  const double max_distance = 1.5;
-  const double increment = 0.2;
-
-  std::vector<EigenSTLVector<Eigen::Vector2d>> raw_images = takePictures(true_camera, true_target, true_target_pose,
-                                                                         ideal_camera_start_point,
-                                                                         min_distance, max_distance,
-                                                                         increment);
+  // Run data collection
+  ExperimentalData data = runExperiment(cell, experiment, NoiseModels());
 
   // Setup optimization
   // Guesses
-  PinholeCamera guess_camera = true_camera;
-  guess_camera.intrinsics.data()[0] = 1000.0; // fx
+  PinholeCamera guess_camera = cell.camera;
   double target_pose[6];
   target_pose[0] = M_PI;  // rx
   target_pose[1] = 0.0;   // ry
@@ -101,14 +161,14 @@ void runExperiment1()
   ceres::Problem problem;
 
   // Build costs
-  for (std::size_t i = 0; i < raw_images.size(); ++i)
+  for (std::size_t i = 0; i < data.images.size(); ++i)
   {
-    const double rail_position = 0.0 + i * increment;
+    const double rail_position = data.rail_position[i];
 
-    for (std::size_t j = 0; j < raw_images[i].size(); ++j)
+    for (std::size_t j = 0; j < data.images[i].size(); ++j)
     {
-      Eigen::Vector2d in_image = raw_images[i][j];
-      Eigen::Vector3d in_target = true_target.points()[j];
+      Eigen::Vector2d in_image = data.images[i][j];
+      Eigen::Vector3d in_target = cell.target.points()[j];
 
       problem.AddResidualBlock(RailICal::Create(in_image.x(), in_image.y(), rail_position, in_target),
                                NULL, guess_camera.intrinsics.data(), target_pose);
@@ -119,7 +179,6 @@ void runExperiment1()
 
   // Solve
   ceres::Solver::Options options;
-  options.logging_type = ceres::LoggingType::PER_MINIMIZER_ITERATION;
   ceres::Solver::Summary summary;
   ceres::Solve(options, &problem, &summary);
 
