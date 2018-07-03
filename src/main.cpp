@@ -42,6 +42,8 @@ struct PhysicalSetup
 
   Eigen::Affine3d target_pose;
   Eigen::Affine3d camera_origin_pose; // Camera pose when its focal point intersects the target
+  Eigen::Vector3d rail_travel_in_camera; // Direction of rail motion in camera frame; nominally 0, 0, -1
+                                         // but we can't be perfect.
 };
 
 struct ExperimentalSetup
@@ -73,8 +75,11 @@ takePictures(const PhysicalSetup& cell, const ExperimentalSetup& experiment, con
 
   for (double s = experiment.min_distance; s <= experiment.max_distance; s += experiment.increment)
   {
-    const static double y_skew = 5.0 * M_PI / 180.0;
-    Eigen::Affine3d camera_pose = cell.camera_origin_pose * Eigen::Translation3d(0, 0, -s) * Eigen::AngleAxisd(y_skew, Eigen::Vector3d::UnitY());
+    // First move the camera back the minimum distance along the origin vector (e.g. it's pointing at the right spot to start)
+    Eigen::Affine3d camera_pose = cell.camera_origin_pose * Eigen::Translation3d(0, 0, -experiment.min_distance);
+    // Then move back along the (possibly skewed) camera motion axis, simulating rail motion
+    camera_pose = camera_pose * Eigen::Translation3d((s - experiment.min_distance) * cell.rail_travel_in_camera);
+
     Eigen::Affine3d target_in_camera = camera_pose.inverse() * cell.target_pose;
 
     EigenSTLVector<Eigen::Vector2d> grid_in_image = projectGrid(target_in_camera, cell.camera, cell.target);
@@ -108,6 +113,11 @@ PhysicalSetup makeGroundTruth()
 
   // TODO: Take a seed - currently you get a new random pertubation each time
   cell.camera_origin_pose = perturbPose(cell.camera_origin_pose, spatial_noise, angular_noise);
+
+  // Set the axis of travel & then perturb it a little
+  cell.rail_travel_in_camera = Eigen::Vector3d(0, 0, -1);
+  cell.rail_travel_in_camera += Eigen::Vector3d(0.1, 0.1, 0.1);
+  cell.rail_travel_in_camera.normalize();
 
   return cell;
 }
@@ -200,6 +210,9 @@ void runExperiment1()
   std::cout << summary.FullReport() << "\n";
 
   // Results:
+  std::cout << "Init avg residual: " << summary.initial_cost / summary.num_residuals << "\n";
+  std::cout << "Final avg residual: " << summary.final_cost / summary.num_residuals << "\n";
+
   std::cout << "---After minimization---\n";
   std::cout << guess_camera << "\n";
   std::cout << "Target Pose:\n";
