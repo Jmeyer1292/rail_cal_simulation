@@ -120,10 +120,10 @@ PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
 
   // Now perturb the camera/target intersection
   const double spatial_noise = 0.01; // +/-
-  const double angular_noise = 10.0 * M_PI / 180.0; // +/- deg
+  const double angular_noise = 30.0 * M_PI / 180.0; // +/- deg
 
   // TODO: Take a seed - currently you get a new random pertubation each time
-  cell.camera_origin_pose = perturbPose(cell.camera_origin_pose, spatial_noise, angular_noise);
+  cell.camera_origin_pose = perturbPose(cell.camera_origin_pose, spatial_noise, angular_noise, rng);
 
   // Set the axis of travel & then perturb it a little
   cell.rail_travel_in_camera = Eigen::Vector3d(0, 0, -1);
@@ -163,9 +163,8 @@ ExperimentalData runExperiment(const PhysicalSetup& setup, const ExperimentalSet
   return filtered_data;
 }
 
-void runExperiment1(int seed)
+bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
 {
-  std::shared_ptr<std::default_random_engine> rng (new std::default_random_engine(seed));
   PhysicalSetup cell = makeGroundTruth(rng);
 
   std::cout << "--- Ground Truth ---\n";
@@ -191,7 +190,7 @@ void runExperiment1(int seed)
   target_pose[2] = 0.0;   // rz
   target_pose[3] = 0.0;   // x
   target_pose[4] = 0.0;   // y
-  target_pose[5] = 0.25;   // z
+  target_pose[5] = 0.5;   // z
 
   ceres::Problem problem;
 
@@ -218,21 +217,38 @@ void runExperiment1(int seed)
   ceres::Solve(options, &problem, &summary);
 
   // Analyze results
-  std::cout << summary.FullReport() << "\n";
-
-  // Results:
+//  std::cout << summary.FullReport() << "\n";
   std::cout << "Init avg residual: " << summary.initial_cost / summary.num_residuals << "\n";
   std::cout << "Final avg residual: " << summary.final_cost / summary.num_residuals << "\n";
 
   std::cout << "---After minimization---\n";
   std::cout << guess_camera << "\n";
-  std::cout << "Target Pose:\n";
+
+
+  std::cout << "---Target Pose---\n";
   std::cout << target_pose[0] << " " << target_pose[1] << " " << target_pose[2] << " "
             << target_pose[3] << " " << target_pose[4] << " " << target_pose[5] << "\n";
+
+  std::cout << "---Camera Errors---\n";
+  std::array<double, 9> diff = difference(cell.camera, guess_camera);
+  bool answer_found = true;
+  for (std::size_t i = 0; i < diff.size(); ++i)
+  {
+    if (abs(diff[i]) > 1e-3) answer_found = false;
+    std::cout << "   diff(" << i << "): " << diff[i] << "\n";
+  }
+  return answer_found;
 }
 
 int main()
 {
   int seed = 0;
-  runExperiment1(seed);
+  std::shared_ptr<std::default_random_engine> rng (new std::default_random_engine(seed));
+
+  const int num_trials = 10;
+  for (int i = 0; i < num_trials; ++i)
+  {
+    bool r = runExperiment(rng);
+    if (!r) std::cout << "Experiment " << i << " failed to converge to correct answer (seed = " << seed << ")\n";
+  }
 }

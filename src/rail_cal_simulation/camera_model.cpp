@@ -17,3 +17,13 @@ std::ostream &operator<<(std::ostream &os, const PinholeCamera &camera)
   os << "---\n";
   return os;
 }
+
+std::array<double, 9> difference(const PinholeCamera& c1, const PinholeCamera& c2)
+{
+  std::array<double, 9> diff;
+  for (int i = 0; i < 9; ++i)
+  {
+    diff[i] = c1.intrinsics.data()[i] - c2.intrinsics.data()[i];
+  }
+  return diff;
+}

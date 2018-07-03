@@ -26,4 +26,6 @@ struct PinholeCamera
 
 std::ostream& operator<<(std::ostream& os, const PinholeCamera& camera);
 
+std::array<double, 9> difference(const PinholeCamera& c1, const PinholeCamera& c2);
+
 #endif // CAMERA_MODEL_H

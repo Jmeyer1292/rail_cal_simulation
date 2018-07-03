@@ -51,3 +51,25 @@ Eigen::Vector3d perturbOrientation(const Eigen::Vector3d& seed, double x_varianc
   std::cout << "New vec: " << new_vec.transpose() << "\n";
   return new_vec;
 }
+
+Eigen::Affine3d perturbPose(const Eigen::Affine3d& pose, double spatial_noise, double angle_noise,
+                            std::shared_ptr<std::default_random_engine> rng)
+{
+
+  std::uniform_real_distribution<double> spatial_dist (-spatial_noise, spatial_noise);
+  std::uniform_real_distribution<double> angle_dist (-angle_noise, angle_noise);
+  std::uniform_real_distribution<double> one_to_one (-1, 1);
+
+  Eigen::Vector3d translation (spatial_dist(*rng), spatial_dist(*rng), spatial_dist(*rng));
+  Eigen::Vector3d rot_axis (one_to_one(*rng), one_to_one(*rng), one_to_one(*rng));
+  rot_axis.normalize();
+
+  double angle = angle_dist(*rng);
+
+  std::cout << "Applied positional noise of " << translation.transpose() << "\n";
+  std::cout << "Applied angular noise of " << (angle * 180.0/M_PI) << " degrees about " << rot_axis.transpose() << "\n";
+  Eigen::Affine3d new_pose = pose * Eigen::Translation3d(translation) * Eigen::AngleAxisd(angle, rot_axis);
+
+  return new_pose;
+}
+
