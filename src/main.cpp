@@ -5,10 +5,11 @@
 #include <rail_cal_simulation/cost_function.h>
 #include <rail_cal_simulation/dot_grid.h>
 #include <rail_cal_simulation/observation_creator.h>
+#include <rail_cal_simulation/random.h>
 #include <rail_cal_simulation/utilities.h>
 #include <Eigen/Dense>
 
-static PinholeCamera makeCamera()
+static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_random_engine> rng)
 {
   PinholeCamera camera;
 
@@ -26,6 +27,16 @@ static PinholeCamera makeCamera()
   camera.intrinsics.data()[6] = 0.0; // k3
   camera.intrinsics.data()[7] = 0.002; // p1
   camera.intrinsics.data()[8] = 0.0; // p2
+
+  if (randomize)
+  {
+    const static double focal_length_variance = 30.0;
+    const static double center_point_variance = 10.0;
+    const static double radial_dist_variance = 0.01;
+    const static double tang_dist_variance = 0.01;
+    camera = randomizeCamera(camera, focal_length_variance, center_point_variance, radial_dist_variance,
+                             tang_dist_variance, rng);
+  }
 
   return camera;
 }
@@ -90,10 +101,10 @@ takePictures(const PhysicalSetup& cell, const ExperimentalSetup& experiment, con
   return data;
 }
 
-PhysicalSetup makeGroundTruth()
+PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
 {
   PhysicalSetup cell;
-  cell.camera = makeCamera();
+  cell.camera = makeCamera(true, rng);
   cell.target = makeTarget();
   cell.target_pose.setIdentity();
 
@@ -153,9 +164,13 @@ ExperimentalData runExperiment(const PhysicalSetup& setup, const ExperimentalSet
   return filtered_data;
 }
 
-void runExperiment1()
+void runExperiment1(int seed)
 {
-  PhysicalSetup cell = makeGroundTruth();
+  std::shared_ptr<std::default_random_engine> rng (new std::default_random_engine(seed));
+  PhysicalSetup cell = makeGroundTruth(rng);
+
+  std::cout << "--- Ground Truth ---\n";
+  std::cout << cell.camera << "\n";
 
   // Define the experiment
   ExperimentalSetup experiment;
@@ -222,5 +237,6 @@ void runExperiment1()
 
 int main()
 {
-  runExperiment1();
+  int seed = 0;
+  runExperiment1(seed);
 }

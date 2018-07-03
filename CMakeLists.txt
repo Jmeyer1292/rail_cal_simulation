@@ -30,6 +30,7 @@ add_executable(${PROJECT_NAME}_node
   src/main.cpp
   src/rail_cal_simulation/camera_model.cpp
   src/rail_cal_simulation/dot_grid.cpp
+  src/rail_cal_simulation/random.cpp
   src/observation_creator.cpp
   src/utilities.cpp)
 
