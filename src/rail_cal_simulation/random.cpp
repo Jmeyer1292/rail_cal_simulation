@@ -32,3 +32,21 @@ PinholeCamera randomizeCamera(const PinholeCamera& input, const double focal_len
 
   return output;
 }
+
+Eigen::Vector3d perturbOrientation(const Eigen::Vector3d& seed, double x_variance, double y_variance,
+                                   std::shared_ptr<std::default_random_engine> rng)
+{
+  std::normal_distribution<double> x_dist (0.0, x_variance);
+  std::normal_distribution<double> y_dist (0.0, y_variance);
+
+  Eigen::Vector3d r (x_dist(*rng), y_dist(*rng), 0.0);
+  Eigen::Vector3d new_vec = (seed + r).normalized();
+
+  Eigen::Quaterniond q;
+  q.setFromTwoVectors(seed, new_vec);
+
+  Eigen::AngleAxisd aa;
+  aa = q;
+  std::cout << "Random " << aa.angle() << " at " << aa.axis() << "\n";
+  return new_vec;
+}

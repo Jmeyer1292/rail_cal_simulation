@@ -1,6 +1,7 @@
 #ifndef RAIL_CAL_SIM_RANDOM_H
 #define RAIL_CAL_SIM_RANDOM_H
 
+#include <Eigen/Dense>
 #include <memory>
 #include <random>
 #include <rail_cal_simulation/camera_model.h>
@@ -11,6 +12,9 @@ PinholeCamera randomizeCamera(const PinholeCamera& input,
                               const double radial_dist_variance,
                               const double tang_dist_variance,
                               std::shared_ptr<std::default_random_engine> rng);
+
+Eigen::Vector3d perturbOrientation(const Eigen::Vector3d& seed, double x_variance, double y_variance,
+                                   std::shared_ptr<std::default_random_engine> rng);
 
 
 

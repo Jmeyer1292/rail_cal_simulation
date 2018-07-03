@@ -127,8 +127,7 @@ PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
 
   // Set the axis of travel & then perturb it a little
   cell.rail_travel_in_camera = Eigen::Vector3d(0, 0, -1);
-  cell.rail_travel_in_camera += Eigen::Vector3d(0.1, 0.1, 0.1);
-  cell.rail_travel_in_camera.normalize();
+  cell.rail_travel_in_camera = perturbOrientation(cell.rail_travel_in_camera, 0.1, 0.1, rng);
 
   return cell;
 }
