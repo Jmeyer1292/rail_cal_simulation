@@ -73,7 +73,8 @@ takePictures(const PhysicalSetup& cell, const ExperimentalSetup& experiment, con
 
   for (double s = experiment.min_distance; s <= experiment.max_distance; s += experiment.increment)
   {
-    Eigen::Affine3d camera_pose = cell.camera_origin_pose * Eigen::Translation3d(0, 0, -s);
+    const static double y_skew = 5.0 * M_PI / 180.0;
+    Eigen::Affine3d camera_pose = cell.camera_origin_pose * Eigen::Translation3d(0, 0, -s) * Eigen::AngleAxisd(y_skew, Eigen::Vector3d::UnitY());
     Eigen::Affine3d target_in_camera = camera_pose.inverse() * cell.target_pose;
 
     EigenSTLVector<Eigen::Vector2d> grid_in_image = projectGrid(target_in_camera, cell.camera, cell.target);
@@ -160,13 +161,16 @@ void runExperiment1()
   // Guesses
   PinholeCamera guess_camera = cell.camera;
   guess_camera.intrinsics.data()[0] = guess_camera.intrinsics.data()[1] = 500.0;
+  for (int i = 0; i < 5; ++i)
+    guess_camera.intrinsics.data()[4 + i] = 0.0;
+
   double target_pose[6];
   target_pose[0] = M_PI;  // rx
   target_pose[1] = 0.0;   // ry
   target_pose[2] = 0.0;   // rz
   target_pose[3] = 0.0;   // x
   target_pose[4] = 0.0;   // y
-  target_pose[5] = 0.5;   // z
+  target_pose[5] = 0.25;   // z
 
   ceres::Problem problem;
 
