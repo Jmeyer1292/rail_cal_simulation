@@ -120,14 +120,14 @@ PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
 
   // Now perturb the camera/target intersection
   const double spatial_noise = 0.01; // +/-
-  const double angular_noise = 20.0 * M_PI / 180.0; // +/- deg
+  const double angular_noise = 10.0 * M_PI / 180.0; // +/- deg
 
   // TODO: Take a seed - currently you get a new random pertubation each time
   cell.camera_origin_pose = perturbPose(cell.camera_origin_pose, spatial_noise, angular_noise);
 
   // Set the axis of travel & then perturb it a little
   cell.rail_travel_in_camera = Eigen::Vector3d(0, 0, -1);
-  cell.rail_travel_in_camera = perturbOrientation(cell.rail_travel_in_camera, 0.1, 0.1, rng);
+  cell.rail_travel_in_camera = perturbOrientation(cell.rail_travel_in_camera, 0.0, 0.0, rng);
 
   return cell;
 }
@@ -183,10 +183,7 @@ void runExperiment1(int seed)
 
   // Setup optimization
   // Guesses
-  PinholeCamera guess_camera = cell.camera;
-  guess_camera.intrinsics.data()[0] = guess_camera.intrinsics.data()[1] = 500.0;
-  for (int i = 0; i < 5; ++i)
-    guess_camera.intrinsics.data()[4 + i] = 0.0;
+  PinholeCamera guess_camera = makeCamera(false, rng); // generate a "perfect", gaussian centered camera
 
   double target_pose[6];
   target_pose[0] = M_PI;  // rx

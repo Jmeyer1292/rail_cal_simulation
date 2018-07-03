@@ -47,6 +47,7 @@ Eigen::Vector3d perturbOrientation(const Eigen::Vector3d& seed, double x_varianc
 
   Eigen::AngleAxisd aa;
   aa = q;
-  std::cout << "Random " << aa.angle() << " at " << aa.axis() << "\n";
+  std::cout << "Random " << (aa.angle() * 180 / M_PI) << " degrees at " << aa.axis().transpose() << "\n";
+  std::cout << "New vec: " << new_vec.transpose() << "\n";
   return new_vec;
 }
