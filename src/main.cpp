@@ -1,5 +1,6 @@
 #include <ceres/ceres.h>
 #include <iostream>
+#include <ros/ros.h>
 
 #include <rail_cal_simulation/camera_model.h>
 #include <rail_cal_simulation/cost_function.h>
@@ -127,7 +128,9 @@ PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
 
   // Set the axis of travel & then perturb it a little
   cell.rail_travel_in_camera = Eigen::Vector3d(0, 0, -1);
-  cell.rail_travel_in_camera = perturbOrientation(cell.rail_travel_in_camera, 0.0, 0.0, rng);
+  const static double x_var = 0.05;
+  const static double y_var = 0.05;
+  cell.rail_travel_in_camera = perturbOrientation(cell.rail_travel_in_camera, x_var, y_var, rng);
 
   return cell;
 }
@@ -240,13 +243,16 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   return answer_found;
 }
 
-int main()
+int main(int argc, char** argv)
 {
-  int seed = 0;
-  std::shared_ptr<std::default_random_engine> rng (new std::default_random_engine(seed));
+  ros::init(argc, argv, "rail_cal_sim");
+  ros::NodeHandle pnh ("~");
 
-  const int num_trials = 10;
-  for (int i = 0; i < num_trials; ++i)
+  int seed = pnh.param<int>("seed", 0);
+  int n_trials = pnh.param<int>("n_trials", 1);
+
+  std::shared_ptr<std::default_random_engine> rng (new std::default_random_engine(seed));
+  for (int i = 0; i < n_trials; ++i)
   {
     bool r = runExperiment(rng);
     if (!r) std::cout << "Experiment " << i << " failed to converge to correct answer (seed = " << seed << ")\n";
