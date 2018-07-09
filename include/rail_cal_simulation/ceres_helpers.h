@@ -40,6 +40,20 @@ inline void transformPoint3d(const T angle_axis[3], const T tx[3], const Point3d
 }
 
 template <typename T>
+inline void transformPoint(const T angle_axis[3], const T tx[3], const T point[3], T t_point[3])
+{
+  T point_[3];
+  point_[0] = point[0];
+  point_[1] = point[1];
+  point_[2] = point[2];
+  ceres::AngleAxisRotatePoint(angle_axis, point_, t_point);
+  t_point[0] = t_point[0] + tx[0];
+  t_point[1] = t_point[1] + tx[1];
+  t_point[2] = t_point[2] + tx[2];
+}
+
+
+template <typename T>
 inline void projectPointDist(T point[3], T& k1, T& k2, T& k3, T& p1, T& p2, T& fx, T& fy, T& cx, T& cy, T pt_in_image[2])
 {
   T xp1 = point[0];
