@@ -131,8 +131,8 @@ public:
 
     T nominal_axis[3]; // Nominally we move back...
     nominal_axis[0] = T(0.0);
-    nominal_axis[0] = T(0.0);
-    nominal_axis[0] = T(1.0);
+    nominal_axis[1] = T(0.0);
+    nominal_axis[2] = T(1.0);
 
     T rotation_axis[3];
     rotation_axis[0] = c_p3[0];
