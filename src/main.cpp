@@ -10,6 +10,8 @@
 #include <rail_cal_simulation/utilities.h>
 #include <Eigen/Dense>
 
+#include <rail_cal_simulation/pnp.h>
+
 static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_random_engine> rng)
 {
   PinholeCamera camera;
@@ -243,6 +245,432 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   return answer_found;
 }
 
+Eigen::Vector3d estimateAxisOfTravel(const ExperimentalData& data, const PhysicalSetup& cell,
+                                     const PinholeCamera& guess_camera)
+{
+  Eigen::Affine3d target_pose0; // first position
+  Eigen::Affine3d target_pose1; // last position
+
+  Eigen::Affine3d guess = Eigen::Affine3d::Identity();
+  guess = guess * Eigen::Translation3d(0,0,0.1) * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX());
+
+  PnPProbem p0;
+  p0.camera = guess_camera;
+  p0.grid = cell.target;
+  p0.image = data.images.front();
+  p0.guess = guess;
+
+  PnPProbem p1;
+  p1.camera = guess_camera;
+  p1.grid = cell.target;
+  p1.image = data.images.back();
+  p1.guess = guess;
+
+
+  if (!computeTargetPose(p0, target_pose0)) throw std::runtime_error("pnp");
+  if (!computeTargetPose(p1, target_pose1)) throw std::runtime_error("pnp1");
+
+  Eigen::Vector3d delta = target_pose1.translation() - target_pose0.translation();
+  return 1.0 * delta.normalized();
+}
+
+// Uses railcal3 to estimate the axis of motion
+bool runExperiment2(std::shared_ptr<std::default_random_engine> rng)
+{
+  PhysicalSetup cell = makeGroundTruth(rng);
+
+  std::cout << "--- Ground Truth ---\n";
+  std::cout << cell.camera << "\n";
+
+  // Define the experiment
+  ExperimentalSetup experiment;
+  experiment.min_distance = 0.1;
+  experiment.max_distance = 2.0;
+  experiment.increment = 0.05;
+  experiment.filter_images = true;
+
+  // Run data collection
+  ExperimentalData data = runExperiment(cell, experiment, NoiseModels());
+
+  // Setup optimization
+  // Guesses
+  PinholeCamera guess_camera = makeCamera(false, rng); // generate a "perfect", gaussian centered camera
+//  PinholeCamera guess_camera = cell.camera;
+
+  double target_pose[6];
+  target_pose[0] = M_PI;  // rx
+  target_pose[1] = 0.0;   // ry
+  target_pose[2] = 0.0;   // rz
+  target_pose[3] = 0.0;   // x
+  target_pose[4] = 0.0;   // y
+  target_pose[5] = 0.5;   // z
+
+  Eigen::Vector3d rail_travel_axis = Eigen::Vector3d(0,0,1).normalized();
+//  rail_travel_axis = -1.0 * cell.rail_travel_in_camera;
+
+  const int max_iters = 3;
+
+  for (int iters = 0; iters < max_iters; ++iters)
+  {
+    ROS_INFO_STREAM("ITERATION " << iters);
+    // For every iteration, we work on the same guesses
+    // First we estimate the axis of travel for the camera
+    rail_travel_axis = estimateAxisOfTravel(data, cell, guess_camera);
+    ROS_INFO_STREAM("RAIL AXIS TRAVEL: " << rail_travel_axis.transpose());
+
+    // Then we use this to compute the railcal3 optimization again
+
+    ceres::Problem problem;
+
+    // Build costs
+    for (std::size_t i = 0; i < data.images.size(); ++i)
+    {
+      const double rail_displacement = data.rail_position[i];
+      const Eigen::Vector3d rail_position = rail_displacement * rail_travel_axis;
+
+      for (std::size_t j = 0; j < data.images[i].size(); ++j)
+      {
+        Eigen::Vector2d in_image = data.images[i][j];
+        Eigen::Vector3d in_target = cell.target.points()[j];
+
+        problem.AddResidualBlock(RailICal3::Create(in_image.x(), in_image.y(), rail_position, in_target),
+                                 NULL, guess_camera.intrinsics.data(), target_pose);
+
+      } // for each circle
+    } // for each image
+
+    // Solve
+    ceres::Solver::Options options;
+    ceres::Solver::Summary summary;
+    ceres::Solve(options, &problem, &summary);
+
+    std::cout << "Init avg residual: " << summary.initial_cost / summary.num_residuals << "\n";
+    std::cout << "Final avg residual: " << summary.final_cost / summary.num_residuals << "\n";
+
+    std::cout << "---After minimization---\n";
+    std::cout << guess_camera << "\n";
+
+
+    std::cout << "---Target Pose---\n";
+    std::cout << target_pose[0] << " " << target_pose[1] << " " << target_pose[2] << " "
+              << target_pose[3] << " " << target_pose[4] << " " << target_pose[5] << "\n";
+
+    std::cout << "---Camera Errors---\n";
+    std::array<double, 9> diff = difference(cell.camera, guess_camera);
+    for (std::size_t i = 0; i < diff.size(); ++i)
+    {
+      std::cout << "   diff(" << i << "): " << diff[i] << "\n";
+    }
+  } // end of iters loop
+
+  return true;
+}
+
+bool runExperiment3(std::shared_ptr<std::default_random_engine> rng)
+{
+  PhysicalSetup cell = makeGroundTruth(rng);
+
+  std::cout << "--- Ground Truth ---\n";
+  std::cout << cell.camera << "\n";
+
+  // Define the experiment
+  ExperimentalSetup experiment;
+  experiment.min_distance = 0.5;
+  experiment.max_distance = 2.0;
+  experiment.increment = 0.25;
+  experiment.filter_images = true;
+
+  // Run data collection
+  ExperimentalData data = runExperiment(cell, experiment, NoiseModels());
+
+  // Setup optimization
+  // Guesses
+  PinholeCamera guess_camera = makeCamera(false, rng); // generate a "perfect", gaussian centered camera
+
+  double target_pose[6];
+  target_pose[0] = M_PI;  // rx
+  target_pose[1] = 0.0;   // ry
+  target_pose[2] = 0.0;   // rz
+  target_pose[3] = 0.0;   // x
+  target_pose[4] = 0.0;   // y
+  target_pose[5] = 0.5;   // z
+
+  double camera_skew[2] = {0.0, 0.0};
+
+  ceres::Problem problem;
+
+  // Build costs
+  for (std::size_t i = 0; i < data.images.size(); ++i)
+  {
+    const double rail_position = data.rail_position[i];
+
+    for (std::size_t j = 0; j < data.images[i].size(); ++j)
+    {
+      Eigen::Vector2d in_image = data.images[i][j];
+      Eigen::Vector3d in_target = cell.target.points()[j];
+
+      problem.AddResidualBlock(RailICal4::Create(in_image.x(), in_image.y(), rail_position, in_target),
+                               NULL, guess_camera.intrinsics.data(), target_pose, camera_skew);
+
+    } // for each circle
+  } // for each image
+
+
+  // Solve
+  ceres::Solver::Options options;
+  ceres::Solver::Summary summary;
+  ceres::Solve(options, &problem, &summary);
+
+  // Analyze results
+//  std::cout << summary.FullReport() << "\n";
+  std::cout << "Init avg residual: " << summary.initial_cost / summary.num_residuals << "\n";
+  std::cout << "Final avg residual: " << summary.final_cost / summary.num_residuals << "\n";
+
+  std::cout << "---After minimization---\n";
+  std::cout << guess_camera << "\n";
+
+  std::cout << "---Camera Skew---\n";
+  std::cout << camera_skew[0] << ", " << camera_skew[1] << "\n";
+
+  Eigen::Vector3d caxis (0, 0, 1);
+  Eigen::Vector3d newaxis;
+  double aaxis[3] = {camera_skew[0], camera_skew[1], 0.0};
+  ceres::AngleAxisRotatePoint(aaxis, caxis.data(), newaxis.data());
+  std::cout << "new axis: " << newaxis.transpose() << "\n";
+
+  std::cout << "---Target Pose---\n";
+  std::cout << target_pose[0] << " " << target_pose[1] << " " << target_pose[2] << " "
+            << target_pose[3] << " " << target_pose[4] << " " << target_pose[5] << "\n";
+
+  std::cout << "---Camera Errors---\n";
+  std::array<double, 9> diff = difference(cell.camera, guess_camera);
+  bool answer_found = true;
+  for (std::size_t i = 0; i < diff.size(); ++i)
+  {
+    if (abs(diff[i]) > 1e-3) answer_found = false;
+    std::cout << "   diff(" << i << "): " << diff[i] << "\n";
+  }
+  return answer_found;
+}
+
+
+bool runExperiment4(std::shared_ptr<std::default_random_engine> rng)
+{
+  PhysicalSetup cell = makeGroundTruth(rng);
+
+  std::cout << "--- Ground Truth ---\n";
+  std::cout << cell.camera << "\n";
+
+  // Define the experiment
+  ExperimentalSetup experiment;
+  experiment.min_distance = 0.5;
+  experiment.max_distance = 2.0;
+  experiment.increment = 0.25;
+  experiment.filter_images = true;
+
+  // Run data collection
+  ExperimentalData data = runExperiment(cell, experiment, NoiseModels());
+
+  // Make a second data set
+  std::cout << "---Second Data Set---\n";
+  PhysicalSetup cell2 = makeGroundTruth(rng);
+  cell.camera_origin_pose = cell2.camera_origin_pose;
+
+  ExperimentalData data2 = runExperiment(cell, experiment, NoiseModels());
+
+  // Setup optimization
+  // Guesses
+  PinholeCamera guess_camera = makeCamera(false, rng); // generate a "perfect", gaussian centered camera
+
+  double target_pose[6];
+  target_pose[0] = M_PI;  // rx
+  target_pose[1] = 0.0;   // ry
+  target_pose[2] = 0.0;   // rz
+  target_pose[3] = 0.0;   // x
+  target_pose[4] = 0.0;   // y
+  target_pose[5] = 0.5;   // z
+
+  double target_pose2[6];
+  target_pose2[0] = M_PI;  // rx
+  target_pose2[1] = 0.0;   // ry
+  target_pose2[2] = 0.0;   // rz
+  target_pose2[3] = 0.0;   // x
+  target_pose2[4] = 0.0;   // y
+  target_pose2[5] = 0.5;   // z
+
+
+  double camera_skew[2] = {0.0, 0.0};
+
+  ceres::Problem problem;
+
+  // Build costs
+  for (std::size_t i = 0; i < data.images.size(); ++i)
+  {
+    const double rail_position = data.rail_position[i];
+
+    for (std::size_t j = 0; j < data.images[i].size(); ++j)
+    {
+      Eigen::Vector2d in_image = data.images[i][j];
+      Eigen::Vector3d in_target = cell.target.points()[j];
+
+      problem.AddResidualBlock(RailICal4::Create(in_image.x(), in_image.y(), rail_position, in_target),
+                               NULL, guess_camera.intrinsics.data(), target_pose, camera_skew);
+
+    } // for each circle
+  } // for each image
+
+  for (std::size_t i = 0; i < data2.images.size(); ++i)
+  {
+    const double rail_position = data2.rail_position[i];
+
+    for (std::size_t j = 0; j < data2.images[i].size(); ++j)
+    {
+      Eigen::Vector2d in_image = data2.images[i][j];
+      Eigen::Vector3d in_target = cell.target.points()[j];
+
+      problem.AddResidualBlock(RailICal4::Create(in_image.x(), in_image.y(), rail_position, in_target),
+                               NULL, guess_camera.intrinsics.data(), target_pose2, camera_skew);
+
+    } // for each circle
+  } // for each image
+
+
+  // Solve
+  ceres::Solver::Options options;
+  ceres::Solver::Summary summary;
+  ceres::Solve(options, &problem, &summary);
+
+  // Analyze results
+//  std::cout << summary.FullReport() << "\n";
+  std::cout << "Init avg residual: " << summary.initial_cost / summary.num_residuals << "\n";
+  std::cout << "Final avg residual: " << summary.final_cost / summary.num_residuals << "\n";
+
+  std::cout << "---After minimization---\n";
+  std::cout << guess_camera << "\n";
+
+  std::cout << "---Camera Skew---\n";
+  std::cout << camera_skew[0] << ", " << camera_skew[1] << "\n";
+
+  Eigen::Vector3d caxis (0, 0, 1);
+  Eigen::Vector3d newaxis;
+  double aaxis[3] = {camera_skew[0], camera_skew[1], 0.0};
+  ceres::AngleAxisRotatePoint(aaxis, caxis.data(), newaxis.data());
+  std::cout << "new axis: " << newaxis.transpose() << "\n";
+
+  std::cout << "---Target Pose---\n";
+  std::cout << target_pose[0] << " " << target_pose[1] << " " << target_pose[2] << " "
+            << target_pose[3] << " " << target_pose[4] << " " << target_pose[5] << "\n";
+
+  std::cout << "---Camera Errors---\n";
+  std::array<double, 9> diff = difference(cell.camera, guess_camera);
+  bool answer_found = true;
+  for (std::size_t i = 0; i < diff.size(); ++i)
+  {
+    if (abs(diff[i]) > 1e-3) answer_found = false;
+    std::cout << "   diff(" << i << "): " << diff[i] << "\n";
+  }
+  return answer_found;
+}
+
+bool runExperiment5(std::shared_ptr<std::default_random_engine> rng)
+{
+  PhysicalSetup cell = makeGroundTruth(rng);
+  cell.camera.intrinsics.data()[4] = 0.0;
+  cell.camera.intrinsics.data()[5] = 0.0;
+  cell.camera.intrinsics.data()[6] = 0.0;
+  cell.camera.intrinsics.data()[7] = 0.0;
+  cell.camera.intrinsics.data()[8] = 0.0;
+
+  std::cout << "--- Ground Truth ---\n";
+  std::cout << cell.camera << "\n";
+
+  // Define the experiment
+  ExperimentalSetup experiment;
+  experiment.min_distance = 0.5;
+  experiment.max_distance = 2.0;
+  experiment.increment = 0.25;
+  experiment.filter_images = true;
+
+  // Run data collection
+  ExperimentalData data = runExperiment(cell, experiment, NoiseModels());
+
+  // Setup optimization
+  // Guesses
+  PinholeCamera guess_camera = makeCamera(false, rng); // generate a "perfect", gaussian centered camera
+  guess_camera.intrinsics.data()[4] = 0.0;
+  guess_camera.intrinsics.data()[5] = 0.0;
+  guess_camera.intrinsics.data()[6] = 0.0;
+  guess_camera.intrinsics.data()[7] = 0.0;
+  guess_camera.intrinsics.data()[8] = 0.0;
+
+  double target_pose[6];
+  target_pose[0] = M_PI;  // rx
+  target_pose[1] = 0.0;   // ry
+  target_pose[2] = 0.0;   // rz
+  target_pose[3] = 0.0;   // x
+  target_pose[4] = 0.0;   // y
+  target_pose[5] = 0.5;   // z
+
+  double camera_skew[2] = {0.0, 0.0};
+
+  ceres::Problem problem;
+
+  // Build costs
+  for (std::size_t i = 0; i < data.images.size(); ++i)
+  {
+    const double rail_position = data.rail_position[i];
+
+    for (std::size_t j = 0; j < data.images[i].size(); ++j)
+    {
+      Eigen::Vector2d in_image = data.images[i][j];
+      Eigen::Vector3d in_target = cell.target.points()[j];
+
+      problem.AddResidualBlock(RailICal5::Create(in_image.x(), in_image.y(), rail_position, in_target),
+                               NULL, guess_camera.intrinsics.data(), target_pose, camera_skew);
+
+    } // for each circle
+  } // for each image
+
+
+  // Solve
+  ceres::Solver::Options options;
+  ceres::Solver::Summary summary;
+  ceres::Solve(options, &problem, &summary);
+
+  // Analyze results
+//  std::cout << summary.FullReport() << "\n";
+  std::cout << "Init avg residual: " << summary.initial_cost / summary.num_residuals << "\n";
+  std::cout << "Final avg residual: " << summary.final_cost / summary.num_residuals << "\n";
+
+  std::cout << "---After minimization---\n";
+  std::cout << guess_camera << "\n";
+
+  std::cout << "---Camera Skew---\n";
+  std::cout << camera_skew[0] << ", " << camera_skew[1] << "\n";
+
+  Eigen::Vector3d caxis (0, 0, 1);
+  Eigen::Vector3d newaxis;
+  double aaxis[3] = {camera_skew[0], camera_skew[1], 0.0};
+  ceres::AngleAxisRotatePoint(aaxis, caxis.data(), newaxis.data());
+  std::cout << "new axis: " << newaxis.transpose() << "\n";
+
+  std::cout << "---Target Pose---\n";
+  std::cout << target_pose[0] << " " << target_pose[1] << " " << target_pose[2] << " "
+            << target_pose[3] << " " << target_pose[4] << " " << target_pose[5] << "\n";
+
+  std::cout << "---Camera Errors---\n";
+  std::array<double, 9> diff = difference(cell.camera, guess_camera);
+  bool answer_found = true;
+  for (std::size_t i = 0; i < diff.size(); ++i)
+  {
+    if (abs(diff[i]) > 1e-3) answer_found = false;
+    std::cout << "   diff(" << i << "): " << diff[i] << "\n";
+  }
+  return answer_found;
+}
+
+
+
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "rail_cal_sim");
@@ -254,7 +682,7 @@ int main(int argc, char** argv)
   std::shared_ptr<std::default_random_engine> rng (new std::default_random_engine(seed));
   for (int i = 0; i < n_trials; ++i)
   {
-    bool r = runExperiment(rng);
-    if (!r) std::cout << "Experiment " << i << " failed to converge to correct answer (seed = " << seed << ")\n";
+    bool r = runExperiment5(rng);
+    if (!r) ROS_WARN_STREAM("Experiment " << i << " failed to converge to correct answer (seed = " << seed << ")\n");
   }
 }
