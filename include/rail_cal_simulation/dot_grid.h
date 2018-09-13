@@ -28,6 +28,21 @@ public:
   PointVector target_points_;
 };
 
+class ThreeDimensionalGrid
+{
+public:
+  ThreeDimensionalGrid(const Eigen::Vector3i& grid_dimensions, double spacing)
+    : grid_dimensions_(grid_dimensions)
+    , spacing_(spacing)
+  {
+  }
+
+
+private:
+  Eigen::Vector3i grid_dimensions_;
+  double spacing_;
+};
+
 std::ostream& operator<<(std::ostream& os, const DotGrid& grid);
 
 #endif // DOT_GRID_H

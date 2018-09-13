@@ -239,6 +239,48 @@ public:
   Point3d point_; /** point expressed in target coordinates */
 };
 
+class IntrCostFunctor
+{
+public:
+  IntrCostFunctor(const Eigen::Vector3d& in_target, const Eigen::Vector2d& in_image)
+    : in_target_(in_target), in_image_(in_image)
+  {}
+
+  template<typename T>
+  bool operator()(const T* const target_pose, const T* const camera_intr, T* const residual) const
+  {
+    T fx, fy, cx, cy, k1, k2, k3, p1, p2;      // extract intrinsics
+    extractCameraIntrinsics(camera_intr, fx, fy, cx, cy, k1, k2, k3, p1, p2);
+
+    const T* target_angle_axis = target_pose + 0;
+    const T* target_position = target_pose + 3;
+
+    // Transform points into camera coordinates
+    T target_pt[3];
+    target_pt[0] = T(in_target_(0));
+    target_pt[1] = T(in_target_(1));
+    target_pt[2] = T(in_target_(2));
+
+    T camera_point[3];  // Point in camera coordinates
+    transformPoint(target_angle_axis, target_position, target_pt, camera_point);
+
+    /** compute project point into image plane and compute residual */
+    T ox = T(in_image_.x());
+    T oy = T(in_image_.y());
+    cameraPntResidualDist(camera_point, k1, k2, k3, p1, p2, fx, fy, cx, cy, ox, oy, residual);
+    return true;
+  }
+
+  static ceres::CostFunction* Create(const Eigen::Vector3d& in_target, const Eigen::Vector2d& in_image)
+  {
+    return new ceres::AutoDiffCostFunction<IntrCostFunctor, 2, 6, 9>(new IntrCostFunctor(in_target, in_image));
+  }
+
+
+private:
+  Eigen::Vector3d in_target_;
+  Eigen::Vector3d in_image_;
+};
 
 
 #endif
