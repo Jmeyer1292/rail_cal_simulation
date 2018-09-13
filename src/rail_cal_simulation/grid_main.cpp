@@ -42,7 +42,7 @@ static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_ran
 
 static ThreeDimensionalGrid makeTarget()
 {
-  return ThreeDimensionalGrid(Eigen::Vector3i(100, 100, 100), 0.01);
+  return ThreeDimensionalGrid(Eigen::Vector3i(150, 50, 50), 0.1);
 }
 
 struct PhysicalSetup
@@ -123,6 +123,8 @@ PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
   cell.target_pose.matrix().col(1).head<3>() = Eigen::Vector3d(-1., 0, 0);
   cell.target_pose.matrix().col(2).head<3>() = Eigen::Vector3d(0, -1, 0);
 
+  cell.target_pose.translation() = Eigen::Vector3d(0.25, 0.25, 0.25);
+
   return cell;
 }
 
@@ -141,13 +143,16 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   // Guesses
   PinholeCamera guess_camera = makeCamera(false, rng); // generate a "perfect", gaussian centered camera
 
+  Eigen::AngleAxisd aaxis (cell.target_pose.linear());
+  Eigen::Vector3d axis = aaxis.axis().normalized() * aaxis.angle();
+
   double target_pose[6];
-  target_pose[0] = M_PI;  // rx
-  target_pose[1] = 0.0;   // ry
-  target_pose[2] = 0.0;   // rz
-  target_pose[3] = 0.0;   // x
+  target_pose[0] = axis(0);  // rx
+  target_pose[1] = axis(1);   // ry
+  target_pose[2] = axis(2);   // rz
+  target_pose[3] = 0.25;   // x
   target_pose[4] = 0.0;   // y
-  target_pose[5] = 0.5;   // z
+  target_pose[5] = 0.25;   // z
 
   ceres::Problem problem;
 
@@ -156,8 +161,7 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
     const Eigen::Vector3d& pt_in_target = p.first;
     const Eigen::Vector2d& pt_in_image = p.second;
 
-    problem.AddResidualBlock(IntrCostFunctor::Create(pt_in_target, pt_in_image), NULL, guess_camera.intrinsics.data(),
-                             target_pose);
+    problem.AddResidualBlock(IntrCostFunctor::Create(pt_in_target, pt_in_image), NULL, target_pose, guess_camera.intrinsics.data());
   }
 
   // Solve
@@ -175,8 +179,8 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
 
 
   std::cout << "---Target Pose---\n";
-  std::cout << target_pose[0] << " " << target_pose[1] << " " << target_pose[2] << " "
-            << target_pose[3] << " " << target_pose[4] << " " << target_pose[5] << "\n";
+  std::cout << "\t" << target_pose[0] << " " << target_pose[1] << " " << target_pose[2] << "\n"
+            << "\t" << target_pose[3] << " " << target_pose[4] << " " << target_pose[5] << "\n";
 
   std::cout << "---Camera Errors---\n";
   std::array<double, 9> diff = difference(cell.camera, guess_camera);
