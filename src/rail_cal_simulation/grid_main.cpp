@@ -13,6 +13,12 @@
 
 #include <ceres/ceres.h>
 
+static Eigen::Vector2d pixelNoise(std::normal_distribution<double>& dist,
+                                  std::default_random_engine& engine)
+{
+  return Eigen::Vector2d(dist(engine), dist(engine));
+}
+
 static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_random_engine> rng)
 {
   PinholeCamera camera;
@@ -62,6 +68,17 @@ struct ExperimentalData
   using ObsPair = std::pair<Eigen::Vector3d, Eigen::Vector2d>; // <in_target, in_image>
   EigenSTLVector<ObsPair> image_points;
 };
+
+void addNoise(ExperimentalData& data, std::shared_ptr<std::default_random_engine> engine)
+{
+  std::normal_distribution<double> pixel_noise (0.0, 0.5);
+
+  for (auto& sample : data.image_points)
+  {
+    auto& pt_in_image = sample.second;
+    pt_in_image += pixelNoise(pixel_noise, *engine);
+  }
+}
 
 ExperimentalData takePictures(const PhysicalSetup& cell)
 {
@@ -218,6 +235,7 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   // Run data collection
   ExperimentalData data = takePictures(cell);
   printExtents(data);
+  addNoise(data, rng);
 
   makePicture(cell.camera, data);
 
@@ -278,7 +296,7 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   std::string cov_file_name("Jon_is_here.txt");
   computeCovariance(cov_file_name, guess_camera, problem );
 
-  return true;
+  return answer_found;
 }
 
 int main(int argc, char** argv)
