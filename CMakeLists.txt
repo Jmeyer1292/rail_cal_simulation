@@ -42,3 +42,21 @@ target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
   ${CERES_LIBRARIES}
 )
+
+add_executable(${PROJECT_NAME}_node2
+  src/rail_cal_simulation/grid_main.cpp
+  src/rail_cal_simulation/camera_model.cpp
+  src/rail_cal_simulation/dot_grid.cpp
+  src/rail_cal_simulation/random.cpp
+  src/observation_creator.cpp
+  src/rail_cal_simulation/pnp.cpp)
+
+set_target_properties(${PROJECT_NAME}_node2 PROPERTIES OUTPUT_NAME grid_cal_sim PREFIX "")
+
+add_dependencies(${PROJECT_NAME}_node2 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+target_link_libraries(${PROJECT_NAME}_node2
+  ${catkin_LIBRARIES}
+  ${CERES_LIBRARIES}
+)
+

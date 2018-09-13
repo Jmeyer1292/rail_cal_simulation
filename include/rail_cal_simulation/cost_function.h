@@ -279,7 +279,7 @@ public:
 
 private:
   Eigen::Vector3d in_target_;
-  Eigen::Vector3d in_image_;
+  Eigen::Vector2d in_image_;
 };
 
 

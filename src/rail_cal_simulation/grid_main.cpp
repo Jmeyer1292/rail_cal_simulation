@@ -60,6 +60,9 @@ struct ExperimentalData
 
 ExperimentalData takePictures(const PhysicalSetup& cell)
 {
+  // Loop through the points of the grid...
+//  const Eigen::Vector3i dims = cell.target.
+
   return {};
 }
 
@@ -96,6 +99,43 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   target_pose[5] = 0.5;   // z
 
   ceres::Problem problem;
+
+  for (const auto& p : data.image_points)
+  {
+    const Eigen::Vector3d& pt_in_target = p.first;
+    const Eigen::Vector2d& pt_in_image = p.second;
+
+    problem.AddResidualBlock(IntrCostFunctor::Create(pt_in_target, pt_in_image), NULL, guess_camera.intrinsics.data(),
+                             target_pose);
+  }
+
+  // Solve
+  ceres::Solver::Options options;
+  ceres::Solver::Summary summary;
+  ceres::Solve(options, &problem, &summary);
+
+  // Analyze results
+//  std::cout << summary.FullReport() << "\n";
+  std::cout << "Init avg residual: " << summary.initial_cost / summary.num_residuals << "\n";
+  std::cout << "Final avg residual: " << summary.final_cost / summary.num_residuals << "\n";
+
+  std::cout << "---After minimization---\n";
+  std::cout << guess_camera << "\n";
+
+
+  std::cout << "---Target Pose---\n";
+  std::cout << target_pose[0] << " " << target_pose[1] << " " << target_pose[2] << " "
+            << target_pose[3] << " " << target_pose[4] << " " << target_pose[5] << "\n";
+
+  std::cout << "---Camera Errors---\n";
+  std::array<double, 9> diff = difference(cell.camera, guess_camera);
+  bool answer_found = true;
+  for (std::size_t i = 0; i < diff.size(); ++i)
+  {
+    if (abs(diff[i]) > 1e-3) answer_found = false;
+    std::cout << "   diff(" << i << "): " << diff[i] << "\n";
+  }
+
 
   return true;
 }

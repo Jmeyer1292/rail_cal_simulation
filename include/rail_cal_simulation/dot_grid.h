@@ -37,6 +37,13 @@ public:
   {
   }
 
+  const Eigen::Vector3i& dimensions() const { return grid_dimensions_; }
+  double spacing() const { return spacing_; }
+
+  Eigen::Vector3d positionOf(const Eigen::Vector3i& index) const
+  {
+    return spacing_ * index.cast<double>();
+  }
 
 private:
   Eigen::Vector3i grid_dimensions_;
