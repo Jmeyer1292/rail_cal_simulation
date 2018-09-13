@@ -61,9 +61,55 @@ struct ExperimentalData
 ExperimentalData takePictures(const PhysicalSetup& cell)
 {
   // Loop through the points of the grid...
-//  const Eigen::Vector3i dims = cell.target.
+  const Eigen::Vector3i dims = cell.target.dimensions();
+  ExperimentalData data;
 
-  return {};
+  for (int x = 0; x < dims.x(); ++x)
+  {
+    for (int y = 0; y  < dims.y(); ++y)
+    {
+      for (int z = 0; z < dims.z(); ++z)
+      {
+        // Compute location of point
+        const Eigen::Vector3d point_in_target = cell.target.positionOf(Eigen::Vector3i(x, y, z));
+        const Eigen::Vector3d point_in_camera = cell.target_pose * point_in_target;
+
+        // Test to see if point is "visible"
+        if (point_in_camera.z() <= 0.0) // Not visible if behind camera
+          continue;
+
+        const auto point_in_image = projectPoint(cell.camera, point_in_camera);
+
+        // Test if the point was projected onto the image plane (dx)
+        if (point_in_image.x() < 0.0 || point_in_image.x() > cell.camera.width)
+          continue;
+
+        // Test if the point was projected onto the image plane (dy)
+        if (point_in_image.y() < 0.0 || point_in_image.y() > cell.camera.height)
+          continue;
+
+        // Point was seen, so add it
+        data.image_points.emplace_back(point_in_target, point_in_image);
+      }
+    }
+  }
+
+  return data;
+}
+
+static void printExtents(const ExperimentalData& data)
+{
+  Eigen::Vector2d min (std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
+  Eigen::Vector2d max (-1., -1.);
+
+  for (const auto& pt : data.image_points)
+  {
+    min = min.array().min(pt.second.array());
+    max = max.array().max(pt.second.array());
+  }
+
+  std::cout << "MIN " << min.transpose() << "\n";
+  std::cout << "MAX " << max.transpose() << "\n";
 }
 
 PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
@@ -71,7 +117,11 @@ PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
   PhysicalSetup cell;
   cell.camera = makeCamera(true, rng);
   cell.target = makeTarget();
+
   cell.target_pose.setIdentity();
+  cell.target_pose.matrix().col(0).head<3>() = Eigen::Vector3d(0, 0, 1);
+  cell.target_pose.matrix().col(1).head<3>() = Eigen::Vector3d(-1., 0, 0);
+  cell.target_pose.matrix().col(2).head<3>() = Eigen::Vector3d(0, -1, 0);
 
   return cell;
 }
@@ -85,6 +135,7 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
 
   // Run data collection
   ExperimentalData data = takePictures(cell);
+  printExtents(data);
 
   // Setup optimization
   // Guesses
@@ -147,4 +198,11 @@ int main(int argc, char** argv)
 
   int seed = pnh.param<int>("seed", 0);
   int n_trials = pnh.param<int>("n_trials", 1);
+
+  std::shared_ptr<std::default_random_engine> rng (new std::default_random_engine(seed));
+  for (int i = 0; i < n_trials; ++i)
+  {
+    bool r = runExperiment(rng);
+    if (!r) ROS_WARN_STREAM("Experiment " << i << " failed to converge to correct answer (seed = " << seed << ")\n");
+  }
 }

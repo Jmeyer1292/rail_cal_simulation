@@ -37,6 +37,11 @@ public:
   {
   }
 
+  ThreeDimensionalGrid()
+    : grid_dimensions_(Eigen::Vector3i::Zero())
+    , spacing_(0.0)
+  {}
+
   const Eigen::Vector3i& dimensions() const { return grid_dimensions_; }
   double spacing() const { return spacing_; }
 
