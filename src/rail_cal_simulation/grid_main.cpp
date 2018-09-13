@@ -122,11 +122,62 @@ PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
   cell.target_pose.matrix().col(0).head<3>() = Eigen::Vector3d(0, 0, 1);
   cell.target_pose.matrix().col(1).head<3>() = Eigen::Vector3d(-1., 0, 0);
   cell.target_pose.matrix().col(2).head<3>() = Eigen::Vector3d(0, -1, 0);
+  cell.target_pose.rotate(Eigen::AngleAxisd(.17,Eigen::Vector3d(.1,.2,.1).normalized()));
 
   cell.target_pose.translation() = Eigen::Vector3d(0.25, 0.25, 0.25);
 
   return cell;
 }
+
+bool computeCovariance(std::string& covariance_file_name, PinholeCamera &C, ceres::Problem &P )
+{
+  FILE* fp;
+  if ((fp = fopen(covariance_file_name.c_str(), "w")) != NULL)
+    {
+      ceres::Covariance::Options covariance_options;
+      covariance_options.algorithm_type = ceres::DENSE_SVD;
+      ceres::Covariance covariance(covariance_options);
+
+      double * pblock = & (C.intrinsics.data()[0]);
+      
+      std::vector<std::pair<const double*, const double*> > covariance_pairs;
+      covariance_pairs.push_back(std::make_pair(pblock, pblock));
+      
+      if(covariance.Compute(covariance_pairs, &P))
+	{
+	  fprintf(fp, "covariance blocks:\n");
+	  double cov_in_in[9*9];
+	  if(covariance.GetCovarianceBlock(pblock, pblock, cov_in_in)){
+	     fprintf(fp, "cov_in_in is 9x9\n");
+	     for(int i=0;i<9;i++){
+	       double sigma_i = sqrt(fabs(cov_in_in[i*9+i]));
+	       for(int j=0;j<9;j++){
+		 double sigma_j = sqrt(fabs(cov_in_in[j*9+j]));
+		 double value;
+		 if(i==j){
+		   value = sigma_i;
+		 }
+		 else{
+		   if(sigma_i==0) sigma_i = 1;
+		   if(sigma_j==0) sigma_j = 1;
+		   value = cov_in_in[i * 9 + j]/(sigma_i*sigma_j);
+		 }
+		 fprintf(fp, "%16.5f ", value);
+	       }  // end of j loop
+	       fprintf(fp, "\n");
+	     }  // end of i loop
+	     }// end if success getting covariance
+	  fclose(fp);
+	  return(true);
+	}// end if covariances could be computed
+      else{
+        ROS_ERROR("could not compute covariance");
+      }// end could not compute covariance
+    }// end if file opens
+  ROS_ERROR("could not open covariance file %s", covariance_file_name.c_str());
+  return (false);
+};  // end computeCovariance()
+
 
 bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
 {
@@ -191,6 +242,9 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
     std::cout << "   diff(" << i << "): " << diff[i] << "\n";
   }
 
+  // print the covariance block
+  std::string cov_file_name("Jon_is_here.txt");
+  computeCovariance(cov_file_name, guess_camera, problem );
 
   return true;
 }
