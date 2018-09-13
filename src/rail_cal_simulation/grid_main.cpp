@@ -42,7 +42,7 @@ static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_ran
 
 static ThreeDimensionalGrid makeTarget()
 {
-  return ThreeDimensionalGrid(Eigen::Vector3i(150, 50, 50), 0.1);
+  return ThreeDimensionalGrid(Eigen::Vector3i(150, 100, 50), 0.1);
 }
 
 struct PhysicalSetup
