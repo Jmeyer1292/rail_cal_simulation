@@ -27,15 +27,15 @@ static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_ran
   camera.width = 1600;
   camera.height = 1200;
   // Pinhole parameters
-  camera.intrinsics.data()[0] = 800.0; // fx
-  camera.intrinsics.data()[1] = 800.0; // fy
+  camera.intrinsics.data()[0] = 500.0; // fx
+  camera.intrinsics.data()[1] = 500.0; // fy
   camera.intrinsics.data()[2] = camera.width / 2; // cx
   camera.intrinsics.data()[3] = camera.height / 2; // cy
   // Distortion Parameters
-  camera.intrinsics.data()[4] = -0.03; // k1
-  camera.intrinsics.data()[5] = 0.05; // k2
+  camera.intrinsics.data()[4] = 0.0; // k1
+  camera.intrinsics.data()[5] = 0.0; // k2
   camera.intrinsics.data()[6] = 0.0; // k3
-  camera.intrinsics.data()[7] = 0.002; // p1
+  camera.intrinsics.data()[7] = 0.0; // p1
   camera.intrinsics.data()[8] = 0.0; // p2
 
   if (randomize)
@@ -53,7 +53,7 @@ static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_ran
 
 static ThreeDimensionalGrid makeTarget()
 {
-  return ThreeDimensionalGrid(Eigen::Vector3i(150, 100, 50), 0.1);
+  return ThreeDimensionalGrid(Eigen::Vector3i(200, 100, 100), 0.1);
 }
 
 struct PhysicalSetup
@@ -136,12 +136,14 @@ static void printExtents(const ExperimentalData& data)
 
 void makePicture(PinholeCamera &C, ExperimentalData& data)
 {
-  cv::Mat Obs_Image(C.width, C.height, CV_8UC1, cv::Scalar::all(0)); // black and white image is fine
+  cv::Mat Obs_Image(C.height, C.width, CV_8UC1, cv::Scalar::all(0)); // black and white image is fine
   for (const auto& pt : data.image_points)
   {
     int row = (int) pt.second.y();
     int col = (int) pt.second.x();
-    Obs_Image.at<unsigned int>(row,col) = 255;
+
+    if (row >= 0 && row < C.height && col >= 0 && col < C.width)
+      Obs_Image.at<unsigned char>(row,col) = 255;
   }
   imshow("Observation Image", Obs_Image);
   cv::waitKey(0);
@@ -157,9 +159,14 @@ PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
   cell.target_pose.matrix().col(0).head<3>() = Eigen::Vector3d(0, 0, 1);
   cell.target_pose.matrix().col(1).head<3>() = Eigen::Vector3d(-1., 0, 0);
   cell.target_pose.matrix().col(2).head<3>() = Eigen::Vector3d(0, -1, 0);
-  cell.target_pose.rotate(Eigen::AngleAxisd(.17,Eigen::Vector3d(.1,.2,.1).normalized()));
+//  cell.target_pose.rotate(Eigen::AngleAxisd(.17, Eigen::Vector3d(.1,.2,.1).normalized()));
+//  cell.target_pose.rotate(Eigen::AngleAxisd(0.3, Eigen::Vector3d::UnitX()));
 
-  cell.target_pose.translation() = Eigen::Vector3d(0.25, 0.25, 0.25);
+  const auto grid_size = cell.target.positionOf(cell.target.dimensions());
+  std::cout << "GRID SIZE: " << grid_size.transpose() << "\n";
+  cell.target_pose.translation() = Eigen::Vector3d(grid_size.y() / 2., grid_size.z() / 2., grid_size.x() / 10.0);
+
+  std::cout << "Grid pose:\n" << cell.target_pose.matrix() << "\n\n";
 
   return cell;
 }
@@ -267,6 +274,7 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
 
   // Solve
   ceres::Solver::Options options;
+  options.num_threads = 32;
   ceres::Solver::Summary summary;
   ceres::Solve(options, &problem, &summary);
 
@@ -295,6 +303,7 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   // print the covariance block
   std::string cov_file_name("Jon_is_here.txt");
   computeCovariance(cov_file_name, guess_camera, problem );
+  std::cout << "Covariance computation finished\n";
 
   return answer_found;
 }
