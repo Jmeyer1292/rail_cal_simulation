@@ -6,6 +6,11 @@
 #include <rail_cal_simulation/random.h>
 #include <rail_cal_simulation/utilities.h>
 
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
 #include <ceres/ceres.h>
 
 static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_random_engine> rng)
@@ -112,6 +117,19 @@ static void printExtents(const ExperimentalData& data)
   std::cout << "MAX " << max.transpose() << "\n";
 }
 
+void makePicture(PinholeCamera &C, ExperimentalData& data)
+{
+  cv::Mat Obs_Image(C.width, C.height, CV_8UC1, cv::Scalar::all(0)); // black and white image is fine
+  for (const auto& pt : data.image_points)
+  {
+    int row = (int) pt.second.y();
+    int col = (int) pt.second.x();
+    Obs_Image.at<unsigned int>(row,col) = 255;
+  }
+  imshow("Observation Image", Obs_Image);
+  cv::waitKey(0);
+}
+
 PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
 {
   PhysicalSetup cell;
@@ -147,6 +165,7 @@ bool computeCovariance(std::string& covariance_file_name, PinholeCamera &C, cere
 	{
 	  fprintf(fp, "covariance blocks:\n");
 	  double cov_in_in[9*9];
+	  double ef[9];
 	  if(covariance.GetCovarianceBlock(pblock, pblock, cov_in_in)){
 	     fprintf(fp, "cov_in_in is 9x9\n");
 	     for(int i=0;i<9;i++){
@@ -156,6 +175,7 @@ bool computeCovariance(std::string& covariance_file_name, PinholeCamera &C, cere
 		 double value;
 		 if(i==j){
 		   value = sigma_i;
+		   ef[i] = sigma_i;
 		 }
 		 else{
 		   if(sigma_i==0) sigma_i = 1;
@@ -167,6 +187,15 @@ bool computeCovariance(std::string& covariance_file_name, PinholeCamera &C, cere
 	       fprintf(fp, "\n");
 	     }  // end of i loop
 	     }// end if success getting covariance
+	  // compute the effect of the variance of each term in pixels
+	  fprintf(fp,"effect of variance at R = image_width/4\n");
+
+	  fprintf(fp,"fx fy: %16.5f %16.5f\n", ef[0], ef[1]);
+	  fprintf(fp,"cx cy: %16.5f %16.5f\n", ef[2], ef[3]);
+	  double R = (C.width + C.height)/6;
+	  double RR = R*R;
+	  fprintf(fp,"k1 k2 k3: %16.5f %16.5f %16.5f\n", ef[4]*RR, ef[5]*RR*RR, ef[6]*RR*RR*RR);
+	  fprintf(fp,"p1 p2: %16.5f %16.5f\n", ef[7]*3*RR, ef[8]*3*RR);
 	  fclose(fp);
 	  return(true);
 	}// end if covariances could be computed
@@ -190,6 +219,8 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   ExperimentalData data = takePictures(cell);
   printExtents(data);
 
+  makePicture(cell.camera, data);
+
   // Setup optimization
   // Guesses
   PinholeCamera guess_camera = makeCamera(false, rng); // generate a "perfect", gaussian centered camera
@@ -206,6 +237,7 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   target_pose[5] = 0.25;   // z
 
   ceres::Problem problem;
+
 
   for (const auto& p : data.image_points)
   {

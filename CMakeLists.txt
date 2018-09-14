@@ -7,6 +7,9 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
 )
 
+find_package(OpenCV REQUIRED)
+message("-- Found OpenCV version ${OpenCV_VERSION}: ${OpenCV_INCLUDE_DIRS}")
+
 find_package(Ceres REQUIRED)
 #find_package(Eigen3 REQUIRED)
 
@@ -24,6 +27,7 @@ include_directories(
   include
   ${catkin_INCLUDE_DIRS}
   ${CERES_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
 )
 
 add_executable(${PROJECT_NAME}_node
@@ -41,6 +45,7 @@ add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catk
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
   ${CERES_LIBRARIES}
+  ${OpenCV_LIBRARIES}
 )
 
 add_executable(${PROJECT_NAME}_node2
@@ -58,5 +63,6 @@ add_dependencies(${PROJECT_NAME}_node2 ${${PROJECT_NAME}_EXPORTED_TARGETS} ${cat
 target_link_libraries(${PROJECT_NAME}_node2
   ${catkin_LIBRARIES}
   ${CERES_LIBRARIES}
+  ${OpenCV_LIBRARIES}
 )
 
