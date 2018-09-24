@@ -13,6 +13,8 @@ EigenSTLVector<Eigen::Vector2d> projectGrid(const Eigen::Affine3d& camera_to_tar
 
 Eigen::Vector2d projectPoint(const PinholeCamera& camera, const Eigen::Vector3d& pt);
 
+bool projectAndTest(const PinholeCamera& camera, const Eigen::Vector3d& pt_in_space, Eigen::Vector2d& out);
+
 // Checks to see if ALL projected points are inside the sensor bounds
 bool inSensorBounds(const int width, const int height, const EigenSTLVector<Eigen::Vector2d>& pts_in_image);
 

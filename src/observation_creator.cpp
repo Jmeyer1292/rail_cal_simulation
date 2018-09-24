@@ -57,3 +57,26 @@ Eigen::Vector2d projectPoint(const PinholeCamera &camera, const Eigen::Vector3d 
 
   return in_image;
 }
+
+bool projectAndTest(const PinholeCamera &camera, const Eigen::Vector3d &pt_in_space, Eigen::Vector2d &out)
+{
+  // Helpful aliasing
+  double fx = camera.intrinsics.data()[0];
+  double fy = camera.intrinsics.data()[1];
+  double cx = camera.intrinsics.data()[2];
+  double cy = camera.intrinsics.data()[3];
+  double k1 = 0; // camera.intrinsics.data()[4];
+  double k2 = 0; // camera.intrinsics.data()[5];
+  double k3 = 0; // camera.intrinsics.data()[6];
+  double p1 = 0; // camera.intrinsics.data()[7];
+  double p2 = 0; // camera.intrinsics.data()[8];
+
+  Eigen::Vector2d in_image;
+  Eigen::Vector3d pt_copy = pt_in_space;
+  projectPointDist(pt_copy.data(), k1, k2, k3, p1, p2, fx, fy, cx, cy, in_image.data());
+
+  if (in_image.x() < 0.0 || in_image.x() > camera.width || in_image.y() < 0.0 || in_image.y() > camera.height) return false;
+  else
+    out = projectPoint(camera, pt_in_space);
+  return true;
+}

@@ -44,9 +44,9 @@ static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_ran
   {
     const static double focal_length_variance = 30.0;
     const static double center_point_variance = 10.0;
-    const static double k1_k2_dist_variance = 0.01;
+    const static double k1_k2_dist_variance = 0.001;
     const static double k3_dist_variance = 0.001;
-    const static double tang_dist_variance = 0.002;
+    const static double tang_dist_variance = 0.00;
     camera = randomizeCamera(camera, focal_length_variance, center_point_variance, k1_k2_dist_variance, k3_dist_variance,
                              tang_dist_variance, rng);
     camera.intrinsics.data()[1] = camera.intrinsics.data()[0];
@@ -58,7 +58,7 @@ static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_ran
 static ThreeDimensionalGrid makeTarget()
 {
 //  return ThreeDimensionalGrid(Eigen::Vector3i(200, 100, 100), 0.1);
-  return ThreeDimensionalGrid(Eigen::Vector3i(50, 50, 50), 0.1);
+  return ThreeDimensionalGrid(Eigen::Vector3i(50, 50, 50), 0.4);
 }
 
 struct PhysicalSetup
@@ -76,13 +76,14 @@ struct ExperimentalData
 
 void addNoise(ExperimentalData& data, std::shared_ptr<std::default_random_engine> engine)
 {
-  std::normal_distribution<double> pixel_noise (0.0, 0.1);
+  return;
+//  std::normal_distribution<double> pixel_noise (0.0, 0.1);
 
-  for (auto& sample : data.image_points)
-  {
-    auto& pt_in_image = sample.second;
-    pt_in_image += pixelNoise(pixel_noise, *engine);
-  }
+//  for (auto& sample : data.image_points)
+//  {
+//    auto& pt_in_image = sample.second;
+//    pt_in_image += pixelNoise(pixel_noise, *engine);
+//  }
 }
 
 ExperimentalData takePictures(const PhysicalSetup& cell)
@@ -105,7 +106,12 @@ ExperimentalData takePictures(const PhysicalSetup& cell)
         if (point_in_camera.z() <= 0.0) // Not visible if behind camera
           continue;
 
-        const auto point_in_image = projectPoint(cell.camera, point_in_camera);
+        Eigen::Vector2d point_in_image;
+        if (!projectAndTest(cell.camera, point_in_camera, point_in_image))
+        {
+          continue;
+        }
+//        const auto point_in_image = projectPoint(cell.camera, point_in_camera);
 
         // Test if the point was projected onto the image plane (dx)
         if (point_in_image.x() < 0.0 || point_in_image.x() > cell.camera.width)
@@ -144,8 +150,8 @@ void makePicture(PinholeCamera &C, ExperimentalData& data)
   cv::Mat Obs_Image(C.height, C.width, CV_8UC1, cv::Scalar::all(0)); // black and white image is fine
   for (const auto& pt : data.image_points)
   {
-    int row = (int) pt.second.y();
-    int col = (int) pt.second.x();
+    int row = static_cast<int>(pt.second.y() + 0.5);
+    int col = static_cast<int>(pt.second.x() + 0.5);
 
     if (row >= 0 && row < C.height && col >= 0 && col < C.width)
       Obs_Image.at<unsigned char>(row,col) = 255;
@@ -164,12 +170,12 @@ PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
   cell.target_pose.matrix().col(0).head<3>() = Eigen::Vector3d(0, 0, 1);
   cell.target_pose.matrix().col(1).head<3>() = Eigen::Vector3d(-1., 0, 0);
   cell.target_pose.matrix().col(2).head<3>() = Eigen::Vector3d(0, -1, 0);
-//  cell.target_pose.rotate(Eigen::AngleAxisd(.17, Eigen::Vector3d(.1,.2,.1).normalized()));
+  cell.target_pose.rotate(Eigen::AngleAxisd(.10, Eigen::Vector3d(.1,.2,.1).normalized()));
 //  cell.target_pose.rotate(Eigen::AngleAxisd(0.3, Eigen::Vector3d::UnitX()));
 
   const auto grid_size = cell.target.positionOf(cell.target.dimensions());
   std::cout << "GRID SIZE: " << grid_size.transpose() << "\n";
-  cell.target_pose.translation() = Eigen::Vector3d(grid_size.y() / 2., grid_size.z() / 2., grid_size.x() / 10.0);
+  cell.target_pose.translation() = Eigen::Vector3d(grid_size.y() / 2., grid_size.z() / 2., grid_size.x() / 5.0);
 
   std::cout << "Grid pose:\n" << cell.target_pose.matrix() << "\n\n";
 
@@ -199,7 +205,6 @@ bool computeCovariance2(const std::string& filename, const double* camera_params
     return false;
   }
 
-
   FILE* fp = std::fopen(filename.c_str(), "w");
   // Write to file
   if (!fp)
@@ -226,7 +231,6 @@ bool computeCovariance2(const std::string& filename, const double* camera_params
         if (sigma_j == 0.0) sigma_j = 1.0;
         value = cov_in_in[i * param_size + j] / (sigma_i * sigma_j);
       }
-
       // Print
       std::fprintf(fp, "%16.5f ", value);
     }
@@ -300,6 +304,7 @@ bool computeCovariance(std::string& covariance_file_name, PinholeCamera &C, cere
 
 bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
 {
+  std::cout << "***New Trial***\n";
   PhysicalSetup cell = makeGroundTruth(rng);
 
   std::cout << "--- Ground Truth ---\n";
@@ -365,6 +370,30 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   return true;
 }
 
+static void drawLoop(std::shared_ptr<std::default_random_engine> rng)
+{
+  std::cout << "***New Trial***\n";
+  PhysicalSetup cell = makeGroundTruth(rng);
+
+  std::cout << "--- Ground Truth ---\n";
+  std::cout << cell.camera << "\n";
+
+  while (true)
+  {
+    ExperimentalData data = takePictures(cell);
+    makePicture(cell.camera, data);
+
+    int c = cv::waitKey(33);
+    if (c == 'w') cell.target_pose.translation().x() += 0.1;
+    if (c == 's') cell.target_pose.translation().x() -= 0.1;
+    if (c == 'a') cell.target_pose.translation().y() += 0.1;
+    if (c == 'd') cell.target_pose.translation().y() -= 0.1;
+    if (c == 'q') cell.target_pose.translation().z() += 0.1;
+    if (c == 'e') cell.target_pose.translation().z() -= 0.1;
+    if (c == 'x') break;
+  }
+}
+
 int main(int argc, char** argv)
 {
 
@@ -380,4 +409,6 @@ int main(int argc, char** argv)
     bool r = runExperiment(rng);
     if (!r) ROS_WARN_STREAM("Experiment " << i << " failed to converge to correct answer (seed = " << seed << ")\n");
   }
+
+//  drawLoop(rng);
 }
