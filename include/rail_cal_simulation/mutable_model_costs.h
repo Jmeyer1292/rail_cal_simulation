@@ -140,7 +140,11 @@ struct ReducedCameraModel
 };
 
 struct ReducedCameraModelMaker {
-  template<class T> static ReducedCameraModel<T> make(const T* data) { return ReducedCameraModel<T>(data); }
+  template<class T> static ReducedCameraModel<T> make(const T* data)
+  {
+    return ReducedCameraModel<T>(data);
+  }
+
   constexpr static int numParams() { return 5; }
 };
 

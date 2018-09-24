@@ -35,9 +35,10 @@ static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_ran
   {
     const static double focal_length_variance = 30.0;
     const static double center_point_variance = 10.0;
-    const static double radial_dist_variance = 0.01;
+    const static double k1_k2_variance = 0.01;
+    const static double k3_variance = 0.001;
     const static double tang_dist_variance = 0.01;
-    camera = randomizeCamera(camera, focal_length_variance, center_point_variance, radial_dist_variance,
+    camera = randomizeCamera(camera, focal_length_variance, center_point_variance, k1_k2_variance, k3_variance,
                              tang_dist_variance, rng);
   }
 

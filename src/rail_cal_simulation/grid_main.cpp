@@ -44,10 +44,12 @@ static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_ran
   {
     const static double focal_length_variance = 30.0;
     const static double center_point_variance = 10.0;
-    const static double radial_dist_variance = 0.01;
-    const static double tang_dist_variance = 0.01;
-    camera = randomizeCamera(camera, focal_length_variance, center_point_variance, radial_dist_variance,
+    const static double k1_k2_dist_variance = 0.01;
+    const static double k3_dist_variance = 0.001;
+    const static double tang_dist_variance = 0.002;
+    camera = randomizeCamera(camera, focal_length_variance, center_point_variance, k1_k2_dist_variance, k3_dist_variance,
                              tang_dist_variance, rng);
+    camera.intrinsics.data()[1] = camera.intrinsics.data()[0];
   }
 
   return camera;
@@ -55,7 +57,8 @@ static PinholeCamera makeCamera(bool randomize, std::shared_ptr<std::default_ran
 
 static ThreeDimensionalGrid makeTarget()
 {
-  return ThreeDimensionalGrid(Eigen::Vector3i(200, 100, 100), 0.1);
+//  return ThreeDimensionalGrid(Eigen::Vector3i(200, 100, 100), 0.1);
+  return ThreeDimensionalGrid(Eigen::Vector3i(50, 50, 50), 0.1);
 }
 
 struct PhysicalSetup
@@ -177,58 +180,58 @@ bool computeCovariance(std::string& covariance_file_name, PinholeCamera &C, cere
 {
   FILE* fp;
   if ((fp = fopen(covariance_file_name.c_str(), "w")) != NULL)
+  {
+    ceres::Covariance::Options covariance_options;
+    covariance_options.algorithm_type = ceres::DENSE_SVD;
+    ceres::Covariance covariance(covariance_options);
+
+    double * pblock = & (C.intrinsics.data()[0]);
+
+    std::vector<std::pair<const double*, const double*> > covariance_pairs;
+    covariance_pairs.push_back(std::make_pair(pblock, pblock));
+
+    if(covariance.Compute(covariance_pairs, &P))
     {
-      ceres::Covariance::Options covariance_options;
-      covariance_options.algorithm_type = ceres::DENSE_SVD;
-      ceres::Covariance covariance(covariance_options);
+      fprintf(fp, "covariance blocks:\n");
+      double cov_in_in[9*9];
+      double ef[9];
+      if(covariance.GetCovarianceBlock(pblock, pblock, cov_in_in)){
+        fprintf(fp, "cov_in_in is 9x9\n");
+        for(int i=0;i<9;i++){
+          double sigma_i = sqrt(fabs(cov_in_in[i*9+i]));
+          for(int j=0;j<9;j++){
+            double sigma_j = sqrt(fabs(cov_in_in[j*9+j]));
+            double value;
+            if(i==j){
+              value = sigma_i;
+              ef[i] = sigma_i;
+            }
+            else{
+              if(sigma_i==0) sigma_i = 1;
+              if(sigma_j==0) sigma_j = 1;
+              value = cov_in_in[i * 9 + j]/(sigma_i*sigma_j);
+            }
+            fprintf(fp, "%16.5f ", value);
+          }  // end of j loop
+          fprintf(fp, "\n");
+        }  // end of i loop
+      }// end if success getting covariance
+      // compute the effect of the variance of each term in pixels
+      fprintf(fp,"effect of variance at R = image_width/4\n");
 
-      double * pblock = & (C.intrinsics.data()[0]);
-      
-      std::vector<std::pair<const double*, const double*> > covariance_pairs;
-      covariance_pairs.push_back(std::make_pair(pblock, pblock));
-      
-      if(covariance.Compute(covariance_pairs, &P))
-	{
-	  fprintf(fp, "covariance blocks:\n");
-	  double cov_in_in[9*9];
-	  double ef[9];
-	  if(covariance.GetCovarianceBlock(pblock, pblock, cov_in_in)){
-	     fprintf(fp, "cov_in_in is 9x9\n");
-	     for(int i=0;i<9;i++){
-	       double sigma_i = sqrt(fabs(cov_in_in[i*9+i]));
-	       for(int j=0;j<9;j++){
-		 double sigma_j = sqrt(fabs(cov_in_in[j*9+j]));
-		 double value;
-		 if(i==j){
-		   value = sigma_i;
-		   ef[i] = sigma_i;
-		 }
-		 else{
-		   if(sigma_i==0) sigma_i = 1;
-		   if(sigma_j==0) sigma_j = 1;
-		   value = cov_in_in[i * 9 + j]/(sigma_i*sigma_j);
-		 }
-		 fprintf(fp, "%16.5f ", value);
-	       }  // end of j loop
-	       fprintf(fp, "\n");
-	     }  // end of i loop
-	     }// end if success getting covariance
-	  // compute the effect of the variance of each term in pixels
-	  fprintf(fp,"effect of variance at R = image_width/4\n");
-
-	  fprintf(fp,"fx fy: %16.5f %16.5f\n", ef[0], ef[1]);
-	  fprintf(fp,"cx cy: %16.5f %16.5f\n", ef[2], ef[3]);
-	  double R = (C.width + C.height)/6;
-	  double RR = R*R;
-	  fprintf(fp,"k1 k2 k3: %16.5f %16.5f %16.5f\n", ef[4]*RR, ef[5]*RR*RR, ef[6]*RR*RR*RR);
-	  fprintf(fp,"p1 p2: %16.5f %16.5f\n", ef[7]*3*RR, ef[8]*3*RR);
-	  fclose(fp);
-	  return(true);
-	}// end if covariances could be computed
-      else{
-        ROS_ERROR("could not compute covariance");
-      }// end could not compute covariance
-    }// end if file opens
+      fprintf(fp,"fx fy: %16.5f %16.5f\n", ef[0], ef[1]);
+      fprintf(fp,"cx cy: %16.5f %16.5f\n", ef[2], ef[3]);
+      double R = (C.width + C.height)/6;
+      double RR = R*R;
+      fprintf(fp,"k1 k2 k3: %16.5f %16.5f %16.5f\n", ef[4]*RR, ef[5]*RR*RR, ef[6]*RR*RR*RR);
+      fprintf(fp,"p1 p2: %16.5f %16.5f\n", ef[7]*3*RR, ef[8]*3*RR);
+      fclose(fp);
+      return(true);
+    }// end if covariances could be computed
+    else{
+      ROS_ERROR("could not compute covariance");
+    }// end could not compute covariance
+  }// end if file opens
   ROS_ERROR("could not open covariance file %s", covariance_file_name.c_str());
   return (false);
 };  // end computeCovariance()
@@ -265,30 +268,20 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
 
   ceres::Problem problem;
 
+  // Build the reduced camera matrix to optimize over
   double camera_intr[5];
-  camera_intr[0] = guess_camera.intrinsics.data()[0];
-  camera_intr[1] = guess_camera.intrinsics.data()[2];
-  camera_intr[2] = guess_camera.intrinsics.data()[3];
-  camera_intr[3] = guess_camera.intrinsics.data()[4];
-  camera_intr[4] = guess_camera.intrinsics.data()[5];
-
-//      os << "   fx: " << camera.intrinsics.data()[0] << "\n";
-//      os << "   fy: " << camera.intrinsics.data()[1] << "\n";
-//      os << "   cx: " << camera.intrinsics.data()[2] << "\n";
-//      os << "   cy: " << camera.intrinsics.data()[3] << "\n";
-//      os << "   k1: " << camera.intrinsics.data()[4] << "\n";
-//      os << "   k2: " << camera.intrinsics.data()[5] << "\n";
-//      os << "   k3: " << camera.intrinsics.data()[6] << "\n";
-//      os << "   p1: " << camera.intrinsics.data()[7] << "\n";
-//      os << "   p2: " << camera.intrinsics.data()[8] << "\n";
-
+  camera_intr[0] = guess_camera.intrinsics.fx();
+  camera_intr[1] = guess_camera.intrinsics.cx();
+  camera_intr[2] = guess_camera.intrinsics.cy();
+  camera_intr[3] = guess_camera.intrinsics.k1();
+  camera_intr[4] = guess_camera.intrinsics.k2();
 
   for (const auto& p : data.image_points)
   {
     const Eigen::Vector3d& pt_in_target = p.first;
     const Eigen::Vector2d& pt_in_image = p.second;
 
-    problem.AddResidualBlock(IntrFunctor<FullCameraModelMaker>::Create(pt_in_target, pt_in_image), NULL, target_pose, guess_camera.intrinsics.data());
+    problem.AddResidualBlock(IntrFunctor<ReducedCameraModelMaker>::Create(pt_in_target, pt_in_image), NULL, target_pose, guess_camera.intrinsics.data());
 //    problem.AddResidualBlock(IntrCostFunctor::Create(pt_in_target, pt_in_image), NULL, target_pose, guess_camera.intrinsics.data());
   }
 
@@ -299,33 +292,15 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   ceres::Solve(options, &problem, &summary);
 
   // Analyze results
-//  std::cout << summary.FullReport() << "\n";
-  std::cout << "Init avg residual: " << summary.initial_cost / summary.num_residuals << "\n";
-  std::cout << "Final avg residual: " << summary.final_cost / summary.num_residuals << "\n";
-
-  std::cout << "---After minimization---\n";
-  std::cout << guess_camera << "\n";
-
-
-  std::cout << "---Target Pose---\n";
-  std::cout << "\t" << target_pose[0] << " " << target_pose[1] << " " << target_pose[2] << "\n"
-            << "\t" << target_pose[3] << " " << target_pose[4] << " " << target_pose[5] << "\n";
-
-  std::cout << "---Camera Errors---\n";
-  std::array<double, 9> diff = difference(cell.camera, guess_camera);
-  bool answer_found = true;
-  for (std::size_t i = 0; i < diff.size(); ++i)
-  {
-    if (abs(diff[i]) > 1e-3) answer_found = false;
-    std::cout << "   diff(" << i << "): " << diff[i] << "\n";
-  }
+  std::cout << "Init avg residual: " << std::sqrt(2.0 * summary.final_cost / summary.num_residuals) << "\n";
+  std::cout << "Final avg residual: " << std::sqrt(2.0 * summary.final_cost / summary.num_residuals) << "\n";
 
   // print the covariance block
   std::string cov_file_name("Jon_is_here.txt");
   computeCovariance(cov_file_name, guess_camera, problem );
   std::cout << "Covariance computation finished\n";
 
-  return answer_found;
+  return true;
 }
 
 int main(int argc, char** argv)

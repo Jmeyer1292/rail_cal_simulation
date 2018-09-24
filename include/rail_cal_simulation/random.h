@@ -9,7 +9,8 @@
 PinholeCamera randomizeCamera(const PinholeCamera& input,
                               const double focal_length_variance,
                               const double center_point_variance,
-                              const double radial_dist_variance,
+                              const double k1_k2_variance,
+                              const double k3_variance,
                               const double tang_dist_variance,
                               std::shared_ptr<std::default_random_engine> rng);
 
