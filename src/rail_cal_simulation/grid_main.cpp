@@ -176,6 +176,67 @@ PhysicalSetup makeGroundTruth(std::shared_ptr<std::default_random_engine> rng)
   return cell;
 }
 
+bool computeCovariance2(const std::string& filename, const double* camera_params, const std::size_t param_size, ceres::Problem& problem)
+{
+  // Parameter setup
+  ceres::Covariance::Options cov_options;
+  cov_options.algorithm_type = ceres::DENSE_SVD;
+  ceres::Covariance covariance(cov_options);
+
+  // We want to compute the variance of the camera matrix with itself
+  std::vector<std::pair<const double*, const double*>> cov_pairs = {std::make_pair(camera_params, camera_params)};
+
+  if (!covariance.Compute(cov_pairs, &problem))
+  {
+    return false;
+  }
+
+  // Allocate buffer to copy the covariance into
+  std::vector<double> cov_in_in (param_size * param_size, 0.0);
+  std::vector<double> ef (param_size, 0.0);
+  if (!covariance.GetCovarianceBlock(camera_params, camera_params, cov_in_in.data()))
+  {
+    return false;
+  }
+
+
+  FILE* fp = std::fopen(filename.c_str(), "w");
+  // Write to file
+  if (!fp)
+  {
+    return false;
+  }
+
+  // Loop over
+  for (std::size_t i = 0; i < param_size; ++i)
+  {
+    double sigma_i = std::sqrt(std::abs(cov_in_in[i * param_size + i]));
+    for (std::size_t j = 0; j < param_size; ++j)
+    {
+      double sigma_j = std::sqrt(std::abs(cov_in_in[j * param_size + j]));
+      double value;
+      if (i == j)
+      {
+        value = sigma_i;
+        ef[i] = sigma_i;
+      }
+      else
+      {
+        if (sigma_i == 0.0) sigma_i = 1.0;
+        if (sigma_j == 0.0) sigma_j = 1.0;
+        value = cov_in_in[i * param_size + j] / (sigma_i * sigma_j);
+      }
+
+      // Print
+      std::fprintf(fp, "%16.5f ", value);
+    }
+    std::fprintf(fp, "\n");
+  } // end of cov computation / normalization
+
+  std::fclose(fp);
+  return true;
+}
+
 bool computeCovariance(std::string& covariance_file_name, PinholeCamera &C, ceres::Problem &P )
 {
   FILE* fp;
@@ -297,7 +358,8 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
 
   // print the covariance block
   std::string cov_file_name("Jon_is_here.txt");
-  computeCovariance(cov_file_name, guess_camera, problem );
+//  computeCovariance(cov_file_name, guess_camera, problem );
+  computeCovariance2(cov_file_name, camera_intr, 5, problem);
   std::cout << "Covariance computation finished\n";
 
   return true;
