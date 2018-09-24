@@ -11,6 +11,8 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
+#include <rail_cal_simulation/mutable_model_costs.h>
+
 #include <ceres/ceres.h>
 
 static Eigen::Vector2d pixelNoise(std::normal_distribution<double>& dist,
@@ -71,7 +73,7 @@ struct ExperimentalData
 
 void addNoise(ExperimentalData& data, std::shared_ptr<std::default_random_engine> engine)
 {
-  std::normal_distribution<double> pixel_noise (0.0, 0.5);
+  std::normal_distribution<double> pixel_noise (0.0, 0.1);
 
   for (auto& sample : data.image_points)
   {
@@ -263,13 +265,31 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
 
   ceres::Problem problem;
 
+  double camera_intr[5];
+  camera_intr[0] = guess_camera.intrinsics.data()[0];
+  camera_intr[1] = guess_camera.intrinsics.data()[2];
+  camera_intr[2] = guess_camera.intrinsics.data()[3];
+  camera_intr[3] = guess_camera.intrinsics.data()[4];
+  camera_intr[4] = guess_camera.intrinsics.data()[5];
+
+//      os << "   fx: " << camera.intrinsics.data()[0] << "\n";
+//      os << "   fy: " << camera.intrinsics.data()[1] << "\n";
+//      os << "   cx: " << camera.intrinsics.data()[2] << "\n";
+//      os << "   cy: " << camera.intrinsics.data()[3] << "\n";
+//      os << "   k1: " << camera.intrinsics.data()[4] << "\n";
+//      os << "   k2: " << camera.intrinsics.data()[5] << "\n";
+//      os << "   k3: " << camera.intrinsics.data()[6] << "\n";
+//      os << "   p1: " << camera.intrinsics.data()[7] << "\n";
+//      os << "   p2: " << camera.intrinsics.data()[8] << "\n";
+
 
   for (const auto& p : data.image_points)
   {
     const Eigen::Vector3d& pt_in_target = p.first;
     const Eigen::Vector2d& pt_in_image = p.second;
 
-    problem.AddResidualBlock(IntrCostFunctor::Create(pt_in_target, pt_in_image), NULL, target_pose, guess_camera.intrinsics.data());
+    problem.AddResidualBlock(IntrFunctor<FullCameraModelMaker>::Create(pt_in_target, pt_in_image), NULL, target_pose, guess_camera.intrinsics.data());
+//    problem.AddResidualBlock(IntrCostFunctor::Create(pt_in_target, pt_in_image), NULL, target_pose, guess_camera.intrinsics.data());
   }
 
   // Solve
@@ -310,6 +330,7 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
 
 int main(int argc, char** argv)
 {
+
   ros::init(argc, argv, "rail_cal_sim");
   ros::NodeHandle pnh ("~");
 
