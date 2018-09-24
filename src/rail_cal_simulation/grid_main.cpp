@@ -342,7 +342,7 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
     const Eigen::Vector3d& pt_in_target = p.first;
     const Eigen::Vector2d& pt_in_image = p.second;
 
-    problem.AddResidualBlock(IntrFunctor<ReducedCameraModelMaker>::Create(pt_in_target, pt_in_image), NULL, target_pose, guess_camera.intrinsics.data());
+    problem.AddResidualBlock(IntrFunctor<ReducedCameraModelMaker>::Create(pt_in_target, pt_in_image), NULL, target_pose, camera_intr);
 //    problem.AddResidualBlock(IntrCostFunctor::Create(pt_in_target, pt_in_image), NULL, target_pose, guess_camera.intrinsics.data());
   }
 
@@ -353,7 +353,7 @@ bool runExperiment(std::shared_ptr<std::default_random_engine> rng)
   ceres::Solve(options, &problem, &summary);
 
   // Analyze results
-  std::cout << "Init avg residual: " << std::sqrt(2.0 * summary.final_cost / summary.num_residuals) << "\n";
+  std::cout << "Init avg residual: " << std::sqrt(2.0 * summary.initial_cost / summary.num_residuals) << "\n";
   std::cout << "Final avg residual: " << std::sqrt(2.0 * summary.final_cost / summary.num_residuals) << "\n";
 
   // print the covariance block
